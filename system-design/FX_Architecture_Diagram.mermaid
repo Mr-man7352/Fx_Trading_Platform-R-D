@@ -1,0 +1,86 @@
+---
+title: FX Swing Trading Platform — Architecture v2.2
+---
+flowchart TB
+
+    subgraph EDGE["Edge · dashboard.fx.example.com"]
+        DASH["Next.js 16 dashboard<br/>charts · agents · backtests · health strip · kill-switch UI"]
+    end
+
+    subgraph API["API plane · api.fx.example.com"]
+        FASTIFY["Fastify 5 modular monolith<br/>REST · WebSocket · Auth.js JWT + TOTP step-up<br/>audit · BullMQ producers"]
+    end
+
+    subgraph WORKERS["Worker plane · BullMQ consumers"]
+        MD["market-data worker<br/>ticks → H1 candles"]
+        SIG["signals worker · per bar close"]
+        GATE{"entry gate · ADR-010<br/>no candidate or P below 0.50<br/>→ gate_skip, zero LLM cost"}
+        CTX["context assembler · BE-074<br/>feature partition · memories · point-in-time headlines<br/>validated vs AgentContextContract"]
+        LG["LangGraph.js · max 3 concurrent<br/>specialists in parallel → bull/bear debate → trader → risk team → PM<br/>PM digest deterministic ADR-011 · debate depth from regime entropy"]
+        SUP["supervisor worker<br/>deterministic gate → LLM supervisor · never widens SL"]
+        EXE["execution worker<br/>idempotent orders · partial fills · rejections · 60s reconciler"]
+    end
+
+    subgraph SAFETY["Deterministic safety · non-LLM final authority"]
+        RG["risk-gate package<br/>caps · correlation clusters · DD halts · blackout<br/>session spread DST-aware · rollover and gap flags · P ≥ 0.60"]
+        KS["kill-switch<br/>state in Postgres ADR-012 · Redis cache only<br/>CLOSING until broker-confirmed flat"]
+    end
+
+    subgraph QUANT["Quant plane · Python 3.13"]
+        GRPC["FastAPI + gRPC<br/>RunPipeline · SizePosition · Predict"]
+        CORE["features DST-aware sessions · HMM + liquidity regime<br/>calibrated meta-model P profitable · vol-target sizing<br/>correlation clustering QN-048 event-triggered refresh<br/>shadow baseline · vectorbt + agentic runner QN-056"]
+        OA["OANDA v20 adapter<br/>sole production venue ADR-005 · MT5 optional"]
+    end
+
+    subgraph DATA["Data plane · dedicated volume, outside Swarm · ADR-006 rev."]
+        PG[("PostgreSQL 18 + TimescaleDB community + pgvector<br/>candles · features · trades · agent_runs<br/>agent_memory outcome-linked, bar_ts-filtered · audit")]
+        REDIS[("Redis 8 · AOF everysec<br/>BullMQ · cache · 2FA tokens")]
+    end
+
+    subgraph EXT["External services"]
+        OANDA["OANDA v20<br/>REST + streaming"]
+        LLM["LLM providers · failover SLA<br/>Anthropic → OpenRouter → OpenAI → Gemini<br/>one 10s fallback · capability-tier downgrade"]
+        VEND["Data vendors<br/>backfill · news + FinBERT · COT FRED EIA · calendar"]
+        ALERT["Telegram + Twilio SMS<br/>SMS = critical only"]
+    end
+
+    subgraph OPS["Ops"]
+        OBS["Grafana · Loki · Tempo<br/>alert thresholds §12.1"]
+        WD["off-host watchdog · ADR-013<br/>own scoped OANDA token<br/>heartbeat timeout → flatten"]
+    end
+
+    DASH -->|"HTTPS + WS · JWT"| FASTIFY
+    FASTIFY -->|"produce jobs"| REDIS
+    REDIS --> MD & SIG & SUP & EXE
+    MD -->|"bar close event"| SIG
+    MD --> PG
+    VEND --> MD
+
+    SIG -->|"gRPC · circuit breaker BE-068<br/>timeout → HOLD · 60s cooldown"| GRPC
+    GRPC --> CORE
+    CORE --> PG
+    SIG --> GATE
+    GATE -->|"candidate"| CTX
+    GATE -.->|"gate_skip"| PG
+    CTX --> LG
+    CTX <-->|"memories · headlines"| PG
+    LG <--> LLM
+    LG -->|"PM decision"| RG
+    SUP <--> LLM
+    SUP --> RG
+
+    RG -->|"TradeIntent on APPROVE"| EXE
+    EXE -->|"BrokerAdapter"| OA
+    OA <--> OANDA
+    EXE --> PG
+    EXE -->|"fill → supervision job"| SUP
+
+    FASTIFY --> KS
+    KS --> EXE
+    KS --> PG
+
+    FASTIFY -.->|"heartbeat"| WD
+    WD -.->|"flatten direct"| OANDA
+    KS --> ALERT
+    OBS --> ALERT
+    RG -->|"halts and vetoes"| ALERT
