@@ -1,0 +1,11 @@
+{
+  "name": "@fx/tsconfig",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared TypeScript configs for the FX platform monorepo (FE-003)",
+  "files": [
+    "base.json",
+    "nextjs.json",
+    "node.json"
+  ]
+}

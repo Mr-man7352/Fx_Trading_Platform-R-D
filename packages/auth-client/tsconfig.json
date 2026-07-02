@@ -1,0 +1,11 @@
+{
+  "extends": "@fx/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

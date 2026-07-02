@@ -1,0 +1,42 @@
+{
+  "name": "@fx/auth-client",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Typed auth hooks: useSession, useStepUp2FA, requireAuth (FE-006)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/react.ts --format esm --dts --clean --external react,next-auth,next-auth/react",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fx/types": "workspace:*"
+  },
+  "peerDependencies": {
+    "next-auth": "5.0.0-beta.31",
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@fx/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "next-auth": "5.0.0-beta.31",
+    "react": "^19.2.0",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.9"
+  }
+}

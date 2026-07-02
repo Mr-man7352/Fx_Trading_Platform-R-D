@@ -1,0 +1,32 @@
+{
+  "name": "@fx/types",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Source of truth for API contracts: Zod 4 schemas, TS types, JSON Schema emit (FE-004)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean && tsx scripts/emit-json-schemas.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@fx/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.5",
+    "vitest": "^4.1.9"
+  }
+}

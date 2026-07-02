@@ -1,0 +1,7 @@
+{
+  "extends": "@fx/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src"]
+}

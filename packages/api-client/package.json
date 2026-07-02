@@ -1,0 +1,32 @@
+{
+  "name": "@fx/api-client",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Typed, Zod-validated fetch client for the Fastify API (FE-005)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fx/types": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@fx/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.9"
+  }
+}
