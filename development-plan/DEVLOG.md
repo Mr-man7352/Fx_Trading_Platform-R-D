@@ -11,11 +11,11 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 
 ## Current state (updated 2026-07-03)
 
-- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy).
-- **Next:** Step 1.3 — Fastify bootstrap (BE-010…015): replace `apis/node-api/src/server.ts`
-  (deliberately plain `node:http`) with production Fastify — Pino, helmet, CORS,
-  rate-limit, Zod routes, request context + audit middleware (internal-token
-  stand-in), WS gateway, OpenAPI/Swagger.
+- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015).
+- **Next:** Step 1.4 — Database schema (BE-020…023, BE-131): TimescaleDB
+  hypertables/CAGGs/retention, Prisma schema, migration pipeline, seeds,
+  encrypted broker credentials. Also swap `LogAuditSink` for the DB-backed
+  append-only `audit_log` sink (BE-130) behind the existing `AuditSink` interface.
 - **Repo:** `Mr-man7352/Fx_Trading_Platform-R-D` → GHCR images
   `ghcr.io/mr-man7352/fx-{node-api,dashboard,quant}` (SHA + latest tags on main).
 - **No production server yet** — BE-006 delivered as scripts + runbook only
@@ -54,6 +54,36 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
   (compose), `pnpm build|test|lint|typecheck|check-env`.
 
 ## Entries
+
+### 2026-07-03 — Step 1.3: Fastify bootstrap (BE-010…015)
+
+- `apis/node-api/src/app.ts` — `buildApp(env)` factory (testable via `inject`,
+  no listen): Pino JSON logs (requestId/method/url/statusCode/responseTime/userId
+  on every completion line), helmet (CSP off — JSON API + Swagger UI), CORS
+  allowlist, rate-limit (429 mapped in the central error handler — the plugin's
+  `errorResponseBuilder` result is *thrown* into `setErrorHandler`, not sent),
+  Zod validator/serializer (`fastify-type-provider-zod` v7), consistent
+  `ApiError` shape incl. 404/429/500, OpenAPI 3.1 + Swagger UI at `/docs`
+  (non-prod only).
+- `src/context.ts` (BE-013) — `req.context = { user, role, stepUp2FAAt, requestId }`;
+  auth = `x-internal-token` header vs `INTERNAL_API_TOKEN` (timing-safe), routes
+  opt out via `config: { public: true }`. Audit hook on POST/PUT/PATCH/DELETE →
+  `app.auditSink` (`src/audit.ts`, log-based `LogAuditSink`; DB sink is BE-130 in Step 1.4).
+- `src/routes/ws.ts` (BE-014, Phase-1 variant) — `/ws` gateway: token via header
+  or `?token=`, subscribe/unsubscribe/ping per `@fx/types` `Ws*` contracts,
+  30 s heartbeat, fed by in-process `EventBus` (`src/events.ts`; Redis fan-out later).
+  JWT auth/expiry-close arrives with BE-030 (Phase 5) behind the same contract.
+- `packages/types` — `ws.ts` (WsClientMessage/WsServerMessage), `ApiError` gained
+  optional `details[]` (field-level 400s); both registered in `contractSchemas`.
+- `scripts/openapi.ts` + root `pnpm openapi` → emits `apis/node-api/openapi.json`
+  (biome-ignored as a generated artifact — see `biome.json`).
+- Env: `INTERNAL_API_TOKEN` (≥16 chars, required), `CORS_ALLOWED_ORIGINS`,
+  `RATE_LIMIT_MAX` added to `env.ts` + `.env.example` — **existing `.env` files
+  need `INTERNAL_API_TOKEN` or boot fails fast (by design)**.
+- Verified (fresh Linux install): build/typecheck/lint/test green (19 tests, incl.
+  WS integration over a real socket), `pnpm openapi` emits, live boot smoke-tested
+  (healthz 200, 401 without token, /docs 200), SIGTERM handler exits 0 with drain log.
+  NOT verified: Docker image rebuild, dashboard against the new API.
 
 ### 2026-07-03 — Step 1.2: Local stack, CI/CD, deploy (BE-004, FE-007, BE-005, BE-006)
 

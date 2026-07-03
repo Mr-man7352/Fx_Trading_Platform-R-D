@@ -7,10 +7,12 @@ import {
   TradesListResponseSchema,
   TradingModeSchema,
 } from './trading.js';
+import { WsClientMessageSchema, WsServerMessageSchema } from './ws.js';
 
 export * from './api.js';
 export * from './auth.js';
 export * from './trading.js';
+export * from './ws.js';
 
 /**
  * Registry of contract schemas emitted as JSON Schema to `dist/schemas/`
@@ -26,4 +28,6 @@ export const contractSchemas = {
   HealthResponse: HealthResponseSchema,
   ApiError: ApiErrorSchema,
   FXSession: FXSessionSchema,
+  WsClientMessage: WsClientMessageSchema,
+  WsServerMessage: WsServerMessageSchema,
 } as const;

@@ -1,0 +1,75 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FX Trading Platform API",
+    "description": "Modular monolith API (Phase 1 — internal-token auth stand-in).",
+    "version": "0.1.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "internalToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-internal-token"
+      }
+    },
+    "schemas": {}
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Liveness/readiness probe",
+        "tags": [
+          "system"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "commit": {
+                      "type": "string"
+                    },
+                    "uptime": {
+                      "type": "number"
+                    },
+                    "tradingMode": {
+                      "type": "string",
+                      "enum": [
+                        "backtest",
+                        "paper",
+                        "live"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "commit",
+                    "uptime",
+                    "tradingMode"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "internalToken": []
+    }
+  ]
+}

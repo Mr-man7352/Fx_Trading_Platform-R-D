@@ -18,6 +18,24 @@ const EnvSchema = z.object({
     .string()
     .default('dev')
     .transform((v) => v || 'dev'),
+  /**
+   * BE-013 — Phase 1 auth stand-in: every non-public route requires this token
+   * in the `x-internal-token` header (WS also accepts `?token=`). Replaced
+   * transparently by NextAuth JWT middleware (BE-030) in Phase 5.
+   */
+  INTERNAL_API_TOKEN: z.string().min(16, 'Use at least 16 characters'),
+  /** BE-011 — comma-separated CORS allowlist. */
+  CORS_ALLOWED_ORIGINS: z
+    .string()
+    .default('http://localhost:3000')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  /** BE-011 — max requests per IP per minute. */
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(100),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

@@ -16,6 +16,8 @@ export const ApiErrorSchema = z.object({
     code: z.string(),
     message: z.string(),
     requestId: z.string().optional(),
+    /** BE-012 — field-level validation errors (400s only). */
+    details: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
   }),
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
