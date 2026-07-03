@@ -1,0 +1,9 @@
+{
+  "name": "@fx/quant",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Quant service — Step 1.2 healthcheck stub; QN-001 (Step 1.5) replaces internals. package.json exists only so `pnpm dev` (turbo) can boot it (FE-007).",
+  "scripts": {
+    "dev": "python3 main.py"
+  }
+}

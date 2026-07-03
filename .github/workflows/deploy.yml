@@ -1,0 +1,47 @@
+# BE-006 — Deploy to Hetzner Swarm over SSH. Manual trigger with an image tag
+# (defaults to the current commit SHA). Requires repo secrets:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY  (see infra/DEPLOY.md §5)
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (git SHA) to deploy; empty = current commit"
+        required: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ inputs.tag != '' && inputs.tag || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync deploy files
+        run: |
+          rsync -az --delete \
+            infra/ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/fx-deploy/infra/"
+
+      - name: Run deploy script
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd ~/fx-deploy && TAG=${{ steps.tag.outputs.tag }} bash infra/deploy/deploy.sh"

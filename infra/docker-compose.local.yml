@@ -1,0 +1,100 @@
+# BE-004 — Local dev stack: PG18+TimescaleDB+pgvector, Redis 8, quant, api, web.
+# Run from repo root:  docker compose -f infra/docker-compose.local.yml up -d --build
+# (or `pnpm stack:up`). All services expose healthchecks; `docker compose ps`
+# must show every service healthy.
+#
+# Production note (BE-004 AC #3): in prod the database is the SAME image
+# (timescale/timescaledb-ha:pg18) but runs on a dedicated Hetzner volume with
+# its own container lifecycle, OUTSIDE the Swarm application stack — see
+# infra/DEPLOY.md and ADR-006 rev. Dev and prod use the identical image.
+
+name: fx-local
+
+services:
+  db:
+    # -ha image = community TimescaleDB (CAGGs, compression, retention) + pgvector.
+    image: timescale/timescaledb-ha:pg18-ts2.28
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fx_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-fx}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db_data:/home/postgres/pgdata/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fx} -d ${POSTGRES_DB:-fx}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:8-alpine
+    # AOF everysec — BullMQ durability + cache correctness depend on it (NFR §7).
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  quant:
+    # Step 1.2 stub — QN-001/QN-005 (Step 1.5) replace internals; the compose
+    # wiring (name, port, healthcheck route) stays identical.
+    build:
+      context: ..
+      dockerfile: services/quant/Dockerfile
+    environment:
+      QUANT_PORT: "5000"
+    ports:
+      - "127.0.0.1:5000:5000"
+
+  api:
+    build:
+      context: ..
+      dockerfile: apis/node-api/Dockerfile
+    environment:
+      NODE_ENV: production
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      API_PORT: "4000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GIT_COMMIT: ${GIT_COMMIT:-local}
+      # Consumed from BE-020/BE-021 onward; wired now so the URL shape is settled.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
+      REDIS_URL: redis://redis:6379
+      QUANT_URL: http://quant:5000
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      quant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/dashboard/Dockerfile
+    environment:
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  redis_data:

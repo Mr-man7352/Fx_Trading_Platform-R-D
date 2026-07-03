@@ -1,0 +1,15 @@
+# BE-006 — Caddy 2: automatic TLS (Let's Encrypt), dashboard at root,
+# API at api.{$DOMAIN}. DOMAIN and ACME_EMAIL come from the stack environment.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy web:3000
+}
+
+api.{$DOMAIN} {
+	encode gzip
+	reverse_proxy api:4000
+}

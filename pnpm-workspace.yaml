@@ -3,3 +3,6 @@ packages:
   - "packages/*"
   - "apis/*"
   - "workers/*"
+  # Python service dirs carry a stub package.json so turbo can run their `dev`
+  # script (FE-007); Python deps are NOT managed by pnpm.
+  - "services/*"

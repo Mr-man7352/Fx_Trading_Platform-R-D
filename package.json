@@ -6,8 +6,12 @@
     "node": ">=22 <23"
   },
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "node scripts/check-env.mjs && turbo run dev",
     "build": "turbo run build",
+    "check-env": "node scripts/check-env.mjs",
+    "stack:up": "docker compose -f infra/docker-compose.local.yml up -d --build",
+    "stack:down": "docker compose -f infra/docker-compose.local.yml down",
+    "stack:ps": "docker compose -f infra/docker-compose.local.yml ps",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

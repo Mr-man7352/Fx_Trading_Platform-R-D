@@ -1,0 +1,19 @@
+# Keep Docker build contexts small and secret-free (BE-004/BE-005).
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+.git
+.vscode
+.idea
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+development-plan
+note.md
