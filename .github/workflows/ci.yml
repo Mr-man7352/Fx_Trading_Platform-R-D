@@ -51,6 +51,57 @@ jobs:
         env:
           TRADING_MODE: paper
 
+  # Step 1.5 (QN-001…005) — quant service: ruff + mypy + pytest, and the
+  # codegen drift check (QN-003 contracts from @fx/types, QN-004 proto stubs).
+  quant:
+    name: Quant (ruff · mypy · pytest · codegen drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # @fx/types build emits the JSON Schemas the contracts codegen reads.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @fx/types (emit JSON Schemas)
+        run: pnpm --filter @fx/types build
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync quant deps (locked)
+        working-directory: services/quant
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        working-directory: services/quant
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+
+      - name: Typecheck (mypy strict)
+        working-directory: services/quant
+        run: uv run mypy
+
+      - name: Codegen drift check (contracts + proto)
+        working-directory: services/quant
+        run: bash scripts/check_codegen.sh
+
+      - name: Test (pytest)
+        working-directory: services/quant
+        run: uv run pytest
+        env:
+          TRADING_MODE: paper
+
   # BE-022 — migrations must apply cleanly to the same image prod runs, the
   # schema must match the migration history (drift check), destructive SQL
   # requires an explicit marker, and the Timescale layer + seeds must succeed.

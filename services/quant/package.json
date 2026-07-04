@@ -2,8 +2,8 @@
   "name": "@fx/quant",
   "version": "0.0.1",
   "private": true,
-  "description": "Quant service — Step 1.2 healthcheck stub; QN-001 (Step 1.5) replaces internals. package.json exists only so `pnpm dev` (turbo) can boot it (FE-007).",
+  "description": "Quant service — FastAPI :5001 + gRPC :50051 (QN-001). Python deps are uv-managed, never pnpm. package.json exists only so `pnpm dev` (turbo) can boot it; requires uv (auto-provisions Python 3.13). Lint/type/test run via uv in the CI quant job, not turbo.",
   "scripts": {
-    "dev": "python3 main.py"
+    "dev": "uv run python -m app"
   }
 }

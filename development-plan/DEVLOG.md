@@ -11,11 +11,14 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 
 ## Current state (updated 2026-07-04)
 
-- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015), Step 1.4 (DB schema: BE-020…023, BE-130, BE-131).
-- **Next:** Step 1.5 — Quant service scaffold (QN-001…005): replace the
-  `services/quant` stub internals (FastAPI + gRPC), `fx_common`, Pydantic
-  codegen from `@fx/types` JSON Schema. Compose wiring (name `quant`, port
-  5000, `/healthz`) must stay identical.
+- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015), Step 1.4 (DB schema: BE-020…023, BE-130, BE-131), Step 1.5 (quant scaffold: QN-001…005).
+- **⚠️ Step 1.5 needs one human action:** `cd services/quant && uv lock` on a
+  machine with uv (sandbox couldn't fetch a Python 3.13 interpreter) — commit
+  `uv.lock`, or CI's `uv sync --frozen` and the Docker build fail. Then run
+  `bash scripts/check_codegen.sh`; if the locked tool versions differ from the
+  ones used to generate committed output (grpcio-tools 1.81.1,
+  datamodel-code-generator 0.67.0, black 26.5.1, isort 8.0.1), regen + commit.
+- **Next:** Step 1.6 — Market data ingestion (QN-020…022, BE-040…045).
 - **First CI run after Step 1.4:** watch the new `migrations` job — the init
   migration was hand-authored (see entry below); the drift check will flag any
   naming mismatch vs `schema.prisma`. Fix by adjusting the migration SQL, not
@@ -30,10 +33,14 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 - **DB image:** `timescale/timescaledb-ha:pg18-ts2.28` — community TimescaleDB
   (CAGGs/compression/retention) + pgvector. Identical image dev and prod; prod
   runs OUTSIDE the Swarm stack on a dedicated Hetzner volume (ADR-006 rev.).
-- **Quant service:** `services/quant` is a stdlib-only Python healthcheck stub
-  (Step 1.2). QN-001/QN-005 (Step 1.5) replace internals; compose/stack wiring
-  (name `quant`, port 5000, `/healthz`) must stay identical. Its `package.json`
-  exists only so turbo `dev` boots it — Python deps are never managed by pnpm.
+- **Quant service:** `services/quant` is a uv-managed Python 3.13 FastAPI +
+  gRPC service (Step 1.5). One process serves both planes: REST `:5001`
+  (`/healthz`; moved off 5000 — see Conventions), gRPC `:50051` (std `grpc.health.v1` + QN-004
+  stubs). Its `package.json` exists only so turbo `dev` boots it (`uv run
+  python -m app`) — Python deps are never managed by pnpm; lint/type/test run
+  via uv in the CI `quant` job, not turbo. Generated code (`app/contracts/`,
+  `app/proto_gen/`) is committed and drift-checked; regenerate via
+  `scripts/gen_contracts.py` + `scripts/gen_proto.py`, never hand-edit.
 - **`TRADING_MODE`** (`backtest|paper|live`): one env flag, one identical code
   path everywhere (BE-003). Env validation is fail-fast Zod in
   `apis/node-api/src/env.ts`; every new key MUST also go into `.env.example`
@@ -62,8 +69,61 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 - Story IDs (FE-/BE-/QN-###) referenced in code comments and commits — keep doing this.
 - Root scripts: `pnpm dev` (env-check then all services), `pnpm stack:up|down|ps`
   (compose), `pnpm build|test|lint|typecheck|check-env`.
+- **Quant HTTP port is 5001** (moved from 5000 on 2026-07-04): macOS AirPlay
+  Receiver squats on 5000 (`ControlCenter` in `lsof -i :5000`) and broke
+  `pnpm dev`. Changed everywhere (config default, Dockerfile healthcheck,
+  compose, stack, `.env.example`) so dev = prod. Local `.env` files need
+  `QUANT_PORT=5001` + `QUANT_URL=http://localhost:5001`.
 
 ## Entries
+
+### 2026-07-04 — Step 1.5: Quant service scaffold (QN-001…005)
+
+- **QN-001:** stdlib stub replaced by uv-managed Python 3.13 project.
+  `app/main.py` — FastAPI factory; lifespan owns the gRPC server (`grpc.aio`,
+  `app/grpc/server.py`) so one process serves REST `:5001` + gRPC `:50051`.
+  (HTTP port moved 5000 → 5001 post-verification: macOS AirPlay conflict —
+  see Conventions.)
+  `/healthz` now returns the `@fx/types` `HealthResponse` contract shape
+  (`status/commit/uptime/tradingMode`) validated by the generated Pydantic
+  model. `app/config.py` — pydantic-settings, fail-fast `TRADING_MODE`
+  validation (mirrors Node's Zod env). `python -m app` honours `QUANT_PORT`.
+  ruff (format+lint) & mypy `strict` configured in `pyproject.toml`.
+- **QN-002:** `libs/fx_common` (uv workspace member): `RequestContext`
+  (contextvars, mirrors BE-013 `req.context`), `FXError` (`to_dict()` matches
+  `ApiError` envelope), JSON logging (one line per record with
+  `service/trading_mode/request_id`, uvicorn loggers routed through it),
+  `load_contract(name)` reading vendored schemas.
+- **QN-003:** `scripts/gen_contracts.py` vendors
+  `packages/types/dist/schemas/*.json` → `app/contracts/schemas/` and
+  generates Pydantic v2 models → `app/contracts/` (datamodel-codegen,
+  snake_case fields + camelCase aliases, `--disable-timestamp` + explicit
+  `--formatters black isort` for deterministic output). Committed; CI
+  regenerates and fails on drift (`scripts/check_codegen.sh`).
+- **QN-004:** `proto/quant.proto` — `fx.quant.v1.QuantService`: `RunPipeline`,
+  `SizePosition`, `Predict` (+ `Timeframe`/`TradeSide` enums aligned with
+  `@fx/types`); shapes provisional until Phase 2. `scripts/gen_proto.py` →
+  `app/proto_gen/` (+ `.pyi`, package-absolute import fix). Servicers abort
+  UNIMPLEMENTED with the owning story id (QN-042/043/046) — Node's breaker
+  (BE-068) treats that as failure → HOLD. Health = std `grpc.health.v1`,
+  SERVING for `""` and the service name; NOT_SERVING during drain.
+- **QN-005:** 3-stage Dockerfile (TA-Lib C 0.6.4 built from source →
+  `uv sync --frozen --no-dev` → slim runtime with venv + `libta-lib`;
+  `EXPOSE 5000 50051`; healthcheck/CMD contract unchanged). Compose/stack:
+  same service name/port/healthz; added `TRADING_MODE`, `QUANT_GRPC_PORT`,
+  `LOG_LEVEL` env (+ `127.0.0.1:50051` publish in compose for grpcurl
+  debugging; never published in prod stack). New CI `quant` job: uv sync
+  --frozen → ruff → mypy → codegen drift check → pytest.
+- Env: `QUANT_GRPC_PORT=50051` added to `.env.example` (check-env passes, 16 keys).
+- Verified (sandbox, **Python 3.10 venv with a StrEnum/`datetime.UTC` shim** —
+  3.13 uninstallable there): 16 pytest tests green (healthz contract, gRPC
+  health SERVING, all 3 RPCs UNIMPLEMENTED, config fail-fast, fx_common),
+  ruff + mypy strict clean (32 files), live smoke: uvicorn boot → `/healthz`
+  200 with contract shape + gRPC health SERVING on 50051 + JSON logs, YAML
+  valid. **NOT verified:** `uv lock`/`uv sync` (see Current state ⚠️ — no
+  3.13 in sandbox; uv.lock NOT committed yet), Docker build (TA-Lib URL +
+  uv sync inside image), `pnpm dev` boot via turbo, codegen byte-stability
+  under the finally-locked tool versions.
 
 ### 2026-07-04 — Step 1.4: Database schema (BE-020…023, BE-130, BE-131)
 

@@ -1,0 +1,6 @@
+{
+  "title": "Instrument",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "string",
+  "pattern": "^[A-Z0-9]{2,4}_[A-Z0-9]{2,4}$"
+}

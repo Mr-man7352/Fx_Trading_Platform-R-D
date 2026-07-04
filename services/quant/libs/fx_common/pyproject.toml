@@ -1,0 +1,14 @@
+# QN-002 — shared logging, errors, request context, contract loaders.
+[project]
+name = "fx-common"
+version = "0.1.0"
+description = "Shared basics for FX Python services: RequestContext, FXError, JSON logging, load_contract"
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fx_common"]

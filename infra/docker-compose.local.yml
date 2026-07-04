@@ -44,15 +44,22 @@ services:
       retries: 12
 
   quant:
-    # Step 1.2 stub — QN-001/QN-005 (Step 1.5) replace internals; the compose
-    # wiring (name, port, healthcheck route) stays identical.
+    # QN-001/QN-005 — FastAPI :5001 + gRPC :50051. Service name + /healthz
+    # unchanged from Step 1.2; HTTP port moved 5000 → 5001 (macOS AirPlay).
     build:
       context: ..
       dockerfile: services/quant/Dockerfile
     environment:
-      QUANT_PORT: "5000"
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      QUANT_PORT: "5001"
+      QUANT_GRPC_PORT: "50051"
+      GIT_COMMIT: ${GIT_COMMIT:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:5001:5001"
+      # gRPC — published for local debugging (grpcurl); workers use the
+      # service name in-network (Phase 2, BE-068).
+      - "127.0.0.1:50051:50051"
 
   api:
     build:
@@ -71,7 +78,7 @@ services:
       CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-ZGV2LW9ubHktY3JlZGVudGlhbHMta2V5LTMyYnl0ZXM=}
       DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
       REDIS_URL: redis://redis:6379
-      QUANT_URL: http://quant:5000
+      QUANT_URL: http://quant:5001
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:

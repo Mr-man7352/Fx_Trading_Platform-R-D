@@ -17,7 +17,7 @@
     "seed:dev": "pnpm --filter @fx/node-api db:seed",
     "seed:creds": "pnpm --filter @fx/node-api db:seed-creds",
     "check-migrations": "node scripts/check-migrations.mjs",
-    "stack:up": "docker compose -f infra/docker-compose.local.yml up -d --build",
+    "stack:uep": "docker compose -f infra/docker-compose.local.yml up -d --build",
     "stack:down": "docker compose -f infra/docker-compose.local.yml down",
     "stack:ps": "docker compose -f infra/docker-compose.local.yml ps",
     "lint": "turbo run lint",

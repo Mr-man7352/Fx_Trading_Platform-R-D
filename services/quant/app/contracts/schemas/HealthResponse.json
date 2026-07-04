@@ -1,0 +1,32 @@
+{
+  "title": "HealthResponse",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "ok"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "uptime": {
+      "type": "number"
+    },
+    "tradingMode": {
+      "type": "string",
+      "enum": [
+        "backtest",
+        "paper",
+        "live"
+      ]
+    }
+  },
+  "required": [
+    "status",
+    "commit",
+    "uptime",
+    "tradingMode"
+  ],
+  "additionalProperties": false
+}

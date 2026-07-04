@@ -1,0 +1,96 @@
+// QN-004 — gRPC service definitions for the quant hot path.
+// Step 1.5 ships definitions + UNIMPLEMENTED servicers; real implementations
+// land in Phase 2 (Predict QN-042, SizePosition QN-043, RunPipeline QN-046).
+// Message shapes are provisional until those stories — evolve fields there.
+//
+// Codegen: `uv run python scripts/gen_proto.py` → app/proto_gen/ (committed;
+// CI drift-checks). TS stubs for Node workers arrive with BE-068 (Phase 2).
+
+syntax = "proto3";
+
+package fx.quant.v1;
+
+import "google/protobuf/timestamp.proto";
+
+service QuantService {
+  // Full deterministic pipeline for one closed bar: features → regime →
+  // candidate + calibrated P(profitable). H1 budget: 30s (system design §2.2);
+  // the Node caller wraps this in a circuit breaker (BE-068, timeout → HOLD).
+  rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
+
+  // Vol-targeted position sizing (Kelly-capped) for a candidate.
+  rpc SizePosition(SizePositionRequest) returns (SizePositionResponse);
+
+  // Meta-model P(profitable) with calibration metadata.
+  rpc Predict(PredictRequest) returns (PredictResponse);
+}
+
+// Matches the timeframe ladder in the DB schema (candles M1 base → D1 CAGGs).
+enum Timeframe {
+  TIMEFRAME_UNSPECIFIED = 0;
+  TIMEFRAME_M1 = 1;
+  TIMEFRAME_M5 = 2;
+  TIMEFRAME_M15 = 3;
+  TIMEFRAME_M30 = 4;
+  TIMEFRAME_H1 = 5;
+  TIMEFRAME_H4 = 6;
+  TIMEFRAME_D1 = 7;
+}
+
+// Aligned with @fx/types TradeSide ("long" | "short").
+enum TradeSide {
+  TRADE_SIDE_UNSPECIFIED = 0;
+  TRADE_SIDE_LONG = 1;
+  TRADE_SIDE_SHORT = 2;
+}
+
+message RunPipelineRequest {
+  string instrument = 1;                // OANDA naming, e.g. "EUR_USD"
+  Timeframe timeframe = 2;
+  google.protobuf.Timestamp bar_ts = 3; // close time of the bar (UTC)
+}
+
+message Candidate {
+  string instrument = 1;
+  TradeSide side = 2;
+  double probability = 3;   // calibrated P(profitable), 0..1
+  string regime = 4;        // HMM + liquidity regime label
+  string model_version = 5;
+}
+
+message RunPipelineResponse {
+  map<string, double> features = 1;
+  // false → HOLD: the deterministic entry gate (ADR-010) skips agents entirely.
+  bool has_candidate = 2;
+  Candidate candidate = 3;
+}
+
+message SizePositionRequest {
+  string instrument = 1;
+  TradeSide side = 2;
+  double probability = 3;      // calibrated P(profitable) from Predict/RunPipeline
+  double account_equity = 4;   // account currency
+  double entry_price = 5;
+  double stop_loss_price = 6;
+}
+
+message SizePositionResponse {
+  double units = 1;                  // position size in units (always > 0; side is explicit)
+  double calibrated_probability = 2;
+  double target_volatility = 3;      // annualised vol target used
+  string sizing_model_version = 4;
+}
+
+message PredictRequest {
+  string instrument = 1;
+  Timeframe timeframe = 2;
+  google.protobuf.Timestamp bar_ts = 3;
+  map<string, double> features = 4;  // optional: precomputed features to score
+}
+
+message PredictResponse {
+  double probability = 1;            // calibrated P(profitable), 0..1
+  string calibration_method = 2;     // e.g. "isotonic"
+  string model_version = 3;
+  google.protobuf.Timestamp trained_at = 4;
+}

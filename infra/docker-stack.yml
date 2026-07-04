@@ -67,15 +67,18 @@ services:
       CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?set CREDENTIALS_ENCRYPTION_KEY}
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       REDIS_URL: redis://redis:6379
-      QUANT_URL: http://quant:5000
+      QUANT_URL: http://quant:5001
     networks: [proxy, backend]
     deploy: *zero_downtime
 
   quant:
     image: ${REGISTRY}/fx-quant:${TAG}
     environment:
-      QUANT_PORT: "5000"
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      QUANT_PORT: "5001"
+      QUANT_GRPC_PORT: "50051"  # backend-network only; never published (QN-005)
       GIT_COMMIT: ${TAG}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     networks: [backend]
     deploy: *zero_downtime
 
