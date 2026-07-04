@@ -12,7 +12,8 @@
       "!**/.next",
       "!**/node_modules",
       "!**/next-env.d.ts",
-      "!**/openapi.json"
+      "!**/openapi.json",
+      "!**/src/generated"
     ]
   },
   "formatter": {

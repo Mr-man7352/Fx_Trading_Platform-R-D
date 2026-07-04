@@ -1,4 +1,5 @@
 import { ApiErrorSchema, HealthResponseSchema } from './api.js';
+import { AuditLogEntrySchema, AuditLogPageSchema, AuditLogQuerySchema } from './audit.js';
 import { FXSessionSchema } from './auth.js';
 import {
   InstrumentSchema,
@@ -10,6 +11,7 @@ import {
 import { WsClientMessageSchema, WsServerMessageSchema } from './ws.js';
 
 export * from './api.js';
+export * from './audit.js';
 export * from './auth.js';
 export * from './trading.js';
 export * from './ws.js';
@@ -30,4 +32,7 @@ export const contractSchemas = {
   FXSession: FXSessionSchema,
   WsClientMessage: WsClientMessageSchema,
   WsServerMessage: WsServerMessageSchema,
+  AuditLogEntry: AuditLogEntrySchema,
+  AuditLogQuery: AuditLogQuerySchema,
+  AuditLogPage: AuditLogPageSchema,
 } as const;

@@ -36,6 +36,16 @@ const EnvSchema = z.object({
     ),
   /** BE-011 — max requests per IP per minute. */
   RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(100),
+  /** BE-021 — Postgres/TimescaleDB connection string (Prisma + pg adapter). */
+  DATABASE_URL: z.string().startsWith('postgres', 'Expected a postgres:// connection string'),
+  /**
+   * BE-131 — base64 of exactly 32 random bytes; seals broker credentials
+   * (AES-256-GCM). Generate with `openssl rand -base64 32`. Rotation bumps
+   * `broker_credentials.key_version`.
+   */
+  CREDENTIALS_ENCRYPTION_KEY: z
+    .string()
+    .refine((v) => Buffer.from(v, 'base64').length === 32, 'Expected base64 of exactly 32 bytes'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

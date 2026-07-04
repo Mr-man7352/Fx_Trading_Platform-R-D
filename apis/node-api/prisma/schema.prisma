@@ -1,0 +1,523 @@
+// BE-021 — Prisma schema for MVP entities (system design §7).
+// Conventions:
+//   - Models are PascalCase, mapped to snake_case tables; fields camelCase → snake_case.
+//   - All timestamps are timestamptz(6), UTC.
+//   - Time-series tables (§7.1) carry NO foreign keys and composite PKs that
+//     include the time column — TimescaleDB hypertable conversion (BE-020)
+//     happens in `prisma/timescale.sql`, applied AFTER migrations
+//     (`pnpm db:timescale`) because CAGG creation cannot run inside Prisma's
+//     per-migration transaction.
+//   - Prices in decision/execution tables use Decimal (exact); bulk analytics
+//     series (candles/ticks/features) use Float (double precision) for speed.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Shared enums ────────────────────────────────────────────────────────────
+
+/// BE-003 — mirrors TradingModeSchema in @fx/types. Keep in sync.
+enum TradingMode {
+  backtest
+  paper
+  live
+
+  @@map("trading_mode")
+}
+
+/// Mirrors TradeSideSchema in @fx/types.
+enum TradeSide {
+  long
+  short
+
+  @@map("trade_side")
+}
+
+enum Timeframe {
+  M1
+  M5
+  M15
+  M30
+  H1
+  H4
+  D1
+  W1
+
+  @@map("timeframe")
+}
+
+// ─── §7.1 Time-series (TimescaleDB hypertables — see prisma/timescale.sql) ──
+
+/// OHLCV per instrument × timeframe. Base ingest is M1 (QN-020); M5→D1 are
+/// served from continuous aggregates (candles_m5 … candles_d1), queried raw.
+model Candle {
+  instrument String
+  timeframe  Timeframe
+  ts         DateTime  @db.Timestamptz(6)
+  open       Float
+  high       Float
+  low        Float
+  close      Float
+  volume     Float     @default(0)
+  complete   Boolean   @default(true)
+  source     String    @default("oanda")
+
+  @@id([instrument, timeframe, ts])
+  @@index([ts])
+  @@map("candles")
+}
+
+/// Raw tick stream. Retention 90 days (timescale.sql).
+model Tick {
+  instrument String
+  ts         DateTime @db.Timestamptz(6)
+  bid        Float
+  ask        Float
+
+  @@id([instrument, ts])
+  @@map("ticks")
+}
+
+/// Spread snapshots for the spread filter + backtest realism. Retention 180 days.
+model SpreadSnapshot {
+  instrument String
+  ts         DateTime @db.Timestamptz(6)
+  spreadPips Float    @map("spread_pips")
+
+  @@id([instrument, ts])
+  @@map("spreads_hist")
+}
+
+/// Point-in-time news headlines; `published_at` is the hypertable time column
+/// so retrieval can never look ahead of the bar being decided.
+model NewsItem {
+  id          String   @default(uuid()) @db.Uuid
+  publishedAt DateTime @map("published_at") @db.Timestamptz(6)
+  source      String
+  externalId  String?  @map("external_id")
+  headline    String
+  summary     String?
+  url         String?
+  instruments String[]
+  sentiment   Float?
+  raw         Json?
+
+  @@id([publishedAt, id])
+  @@index([source, publishedAt])
+  @@map("news_archive")
+}
+
+/// COT / EIA / FRED series — release-time aware: `release_ts` is when the value
+/// became publicly known (backtests must join on this, not the period).
+model MacroFeature {
+  series    String
+  releaseTs DateTime @map("release_ts") @db.Timestamptz(6)
+  revision  Int      @default(0)
+  period    String?
+  value     Float
+  source    String
+  raw       Json?
+
+  @@id([series, releaseTs, revision])
+  @@map("macro_features")
+}
+
+/// Computed feature vectors per bar (incl. session_label, liquidity_regime).
+/// `version` = feature-set version, so recomputes never clobber history.
+model FeatureVector {
+  instrument     String
+  timeframe      Timeframe
+  barTs          DateTime  @map("bar_ts") @db.Timestamptz(6)
+  version        Int       @default(1)
+  sessionLabel   String?   @map("session_label")
+  liquidityRegime String?  @map("liquidity_regime")
+  features       Json
+
+  @@id([instrument, timeframe, barTs, version])
+  @@index([barTs])
+  @@map("features")
+}
+
+// ─── §7.2 Trading & decision audit ───────────────────────────────────────────
+
+enum SignalStatus {
+  candidate
+  approved
+  rejected
+  expired
+  executed
+
+  @@map("signal_status")
+}
+
+/// Quant candidates + meta-model probability (BE-021).
+model Signal {
+  id              String       @id @default(uuid()) @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  barTs           DateTime     @map("bar_ts") @db.Timestamptz(6)
+  instrument      String
+  timeframe       Timeframe
+  side            TradeSide
+  entryPrice      Decimal?     @map("entry_price") @db.Decimal(14, 6)
+  stopLoss        Decimal?     @map("stop_loss") @db.Decimal(14, 6)
+  takeProfit      Decimal?     @map("take_profit") @db.Decimal(14, 6)
+  quantScore      Float?       @map("quant_score")
+  metaProbability Float?       @map("meta_probability")
+  status          SignalStatus @default(candidate)
+  tradingMode     TradingMode  @map("trading_mode")
+  features        Json?
+
+  agentRuns AgentRun[]
+  debate    AgentDebateMessage[]
+  intents   TradeIntent[]
+
+  @@index([instrument, barTs])
+  @@index([status, createdAt])
+  @@map("signals")
+}
+
+/// One row per agent LLM call: model, prompt_hash, token/cost accounting.
+model AgentRun {
+  id           String   @id @default(uuid()) @db.Uuid
+  signalId     String?  @map("signal_id") @db.Uuid
+  agentRole    String   @map("agent_role")
+  model        String
+  promptHash   String   @map("prompt_hash")
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  costUsd      Decimal  @default(0) @map("cost_usd") @db.Decimal(12, 6)
+  latencyMs    Int      @default(0) @map("latency_ms")
+  output       Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  signal Signal? @relation(fields: [signalId], references: [id], onDelete: SetNull)
+
+  @@index([signalId])
+  @@index([agentRole, createdAt])
+  @@map("agent_runs")
+}
+
+enum DebateSpeaker {
+  bull
+  bear
+  judge
+
+  @@map("debate_speaker")
+}
+
+/// Bull/bear debate transcripts, one row per utterance.
+model AgentDebateMessage {
+  id        String        @id @default(uuid()) @db.Uuid
+  signalId  String        @map("signal_id") @db.Uuid
+  round     Int
+  seq       Int
+  speaker   DebateSpeaker
+  content   String
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@unique([signalId, seq])
+  @@index([signalId, round])
+  @@map("agent_debates")
+}
+
+/// Vector-embedded agent reflections. Retrieval MUST filter on bar_ts (no
+/// look-ahead). Embedding writes go through $executeRaw (Unsupported type);
+/// HNSW cosine index is added in the init migration SQL.
+model AgentMemory {
+  id         String                       @id @default(uuid()) @db.Uuid
+  barTs      DateTime                     @map("bar_ts") @db.Timestamptz(6)
+  instrument String
+  agentRole  String                       @map("agent_role")
+  summary    String
+  embedding  Unsupported("vector(1536)")?
+  outcome    Json?
+  createdAt  DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([barTs])
+  @@index([instrument, agentRole, barTs])
+  @@map("agent_memory")
+}
+
+enum IntentStatus {
+  pending
+  approved
+  rejected
+  submitted
+  cancelled
+
+  @@map("intent_status")
+}
+
+/// Post-risk-gate execution plans. `risk_gate` records every check + verdict.
+model TradeIntent {
+  id          String       @id @default(uuid()) @db.Uuid
+  signalId    String       @map("signal_id") @db.Uuid
+  instrument  String
+  side        TradeSide
+  units       Decimal      @db.Decimal(16, 2)
+  entryPrice  Decimal?     @map("entry_price") @db.Decimal(14, 6)
+  stopLoss    Decimal      @map("stop_loss") @db.Decimal(14, 6)
+  takeProfit  Decimal?     @map("take_profit") @db.Decimal(14, 6)
+  riskPct     Float        @map("risk_pct")
+  riskGate    Json         @map("risk_gate")
+  status      IntentStatus @default(pending)
+  tradingMode TradingMode  @map("trading_mode")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  decidedAt   DateTime?    @map("decided_at") @db.Timestamptz(6)
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Restrict)
+  trade  Trade?
+
+  @@index([status, createdAt])
+  @@map("trade_intents")
+}
+
+enum TradeStatus {
+  open
+  closed
+  cancelled
+
+  @@map("trade_status")
+}
+
+/// Open/closed positions incl. broker IDs and swap_pnl (§7.2).
+model Trade {
+  id            String      @id @default(uuid()) @db.Uuid
+  intentId      String?     @unique @map("intent_id") @db.Uuid
+  userId        String?     @map("user_id") @db.Uuid
+  instrument    String
+  side          TradeSide
+  units         Decimal     @db.Decimal(16, 2)
+  entryPrice    Decimal     @map("entry_price") @db.Decimal(14, 6)
+  exitPrice     Decimal?    @map("exit_price") @db.Decimal(14, 6)
+  stopLoss      Decimal?    @map("stop_loss") @db.Decimal(14, 6)
+  takeProfit    Decimal?    @map("take_profit") @db.Decimal(14, 6)
+  openedAt      DateTime    @map("opened_at") @db.Timestamptz(6)
+  closedAt      DateTime?   @map("closed_at") @db.Timestamptz(6)
+  brokerTradeId String?     @unique @map("broker_trade_id")
+  brokerOrderId String?     @map("broker_order_id")
+  realizedPnl   Decimal?    @map("realized_pnl") @db.Decimal(14, 6)
+  swapPnl       Decimal     @default(0) @map("swap_pnl") @db.Decimal(14, 6)
+  commission    Decimal     @default(0) @db.Decimal(14, 6)
+  status        TradeStatus @default(open)
+  tradingMode   TradingMode @map("trading_mode")
+  meta          Json?
+
+  intent       TradeIntent?  @relation(fields: [intentId], references: [id], onDelete: SetNull)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  supervisions Supervision[]
+
+  @@index([status])
+  @@index([instrument, openedAt])
+  @@map("trades")
+}
+
+enum SupervisionAction {
+  hold
+  close
+  tighten_stop
+  take_partial
+
+  @@map("supervision_action")
+}
+
+/// LLM supervisor decisions per open trade (advisory; risk gate stays final).
+model Supervision {
+  id         String            @id @default(uuid()) @db.Uuid
+  tradeId    String            @map("trade_id") @db.Uuid
+  agentRunId String?           @map("agent_run_id") @db.Uuid
+  action     SupervisionAction
+  rationale  String?
+  applied    Boolean           @default(false)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@index([tradeId, createdAt])
+  @@map("supervisions")
+}
+
+/// Shadow quant baseline — always logged, whether or not agents agree.
+model BaselineSignal {
+  id         String    @id @default(uuid()) @db.Uuid
+  barTs      DateTime  @map("bar_ts") @db.Timestamptz(6)
+  instrument String
+  timeframe  Timeframe
+  side       TradeSide?
+  quantScore Float     @map("quant_score")
+  wouldTrade Boolean   @map("would_trade")
+  meta       Json?
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([instrument, barTs])
+  @@map("baseline_signals")
+}
+
+/// BE-130 — append-only. UPDATE/DELETE/TRUNCATE are blocked by a DB trigger
+/// (see init migration). Writes go through DbAuditSink only.
+model AuditLog {
+  id          BigInt      @id @default(autoincrement())
+  at          DateTime    @db.Timestamptz(6)
+  requestId   String      @map("request_id")
+  actorId     String?     @map("actor_id")
+  role        String
+  method      String
+  url         String
+  statusCode  Int         @map("status_code")
+  tradingMode TradingMode @map("trading_mode")
+  details     Json?
+
+  @@index([at])
+  @@index([actorId, at])
+  @@map("audit_log")
+}
+
+enum BacktestStatus {
+  queued
+  running
+  finished
+  failed
+
+  @@map("backtest_status")
+}
+
+/// Backtest config, metrics, and validation verdict (walk-forward gate).
+model BacktestRun {
+  id                String         @id @default(uuid()) @db.Uuid
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt         DateTime?      @map("started_at") @db.Timestamptz(6)
+  finishedAt        DateTime?      @map("finished_at") @db.Timestamptz(6)
+  status            BacktestStatus @default(queued)
+  config            Json
+  metrics           Json?
+  validationVerdict String?        @map("validation_verdict")
+  gitCommit         String?        @map("git_commit")
+  artifactPath      String?        @map("artifact_path")
+
+  @@index([status, createdAt])
+  @@map("backtest_runs")
+}
+
+// ─── §7.3 Auth & compliance ──────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  operator
+  viewer
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  active
+  suspended
+
+  @@map("user_status")
+}
+
+/// Identity (Google OAuth sync + credentials). Auth flows land in Phase 5
+/// (BE-030…036); Phase 1 only needs the rows for FKs and seeds.
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique
+  name            String?
+  image           String?
+  googleId        String?    @unique @map("google_id")
+  passwordHash    String?    @map("password_hash")
+  role            UserRole   @default(operator)
+  status          UserStatus @default(active)
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(6)
+  totpSecret      String?    @map("totp_secret")
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  trades            Trade[]
+  brokerCredentials BrokerCredential[]
+  tokens            EmailVerificationToken[]
+  invitesCreated    InviteCode[]             @relation("InviteCreatedBy")
+
+  @@map("users")
+}
+
+/// Invite-only registration (§4.2). Redemption tracking arrives with BE-035.
+model InviteCode {
+  id           String    @id @default(uuid()) @db.Uuid
+  code         String    @unique
+  createdById  String?   @map("created_by_id") @db.Uuid
+  invitedEmail String?   @map("invited_email")
+  maxUses      Int       @default(1) @map("max_uses")
+  usedCount    Int       @default(0) @map("used_count")
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  createdBy User? @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("invite_codes")
+}
+
+enum TokenPurpose {
+  verify_email
+  password_reset
+
+  @@map("token_purpose")
+}
+
+/// Email verify + password reset. Stores a hash, never the raw token.
+model EmailVerificationToken {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  tokenHash String       @unique @map("token_hash")
+  purpose   TokenPurpose
+  expiresAt DateTime     @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime?    @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+enum Broker {
+  oanda
+  mt5
+
+  @@map("broker")
+}
+
+enum BrokerEnvironment {
+  practice
+  live
+
+  @@map("broker_environment")
+}
+
+/// BE-131 — sealed broker credentials. `ciphertext` is the AES-256-GCM
+/// envelope (`v1:` + base64(iv‖tag‖ciphertext), AAD "fx-broker-credentials:v1");
+/// see src/crypto/credentials.ts. Plaintext never touches the DB or logs;
+/// decryption happens only in worker/quant runtime. Seeded via CLI until the
+/// Phase 5 settings write path (BE-100 + step-up 2FA BE-036).
+model BrokerCredential {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String            @map("user_id") @db.Uuid
+  broker      Broker            @default(oanda)
+  environment BrokerEnvironment @default(practice)
+  label       String            @default("default")
+  ciphertext  String
+  keyVersion  Int               @default(1) @map("key_version")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastUsedAt  DateTime?         @map("last_used_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, broker, environment, label])
+  @@map("broker_credentials")
+}

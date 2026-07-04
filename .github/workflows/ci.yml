@@ -51,6 +51,60 @@ jobs:
         env:
           TRADING_MODE: paper
 
+  # BE-022 — migrations must apply cleanly to the same image prod runs, the
+  # schema must match the migration history (drift check), destructive SQL
+  # requires an explicit marker, and the Timescale layer + seeds must succeed.
+  migrations:
+    name: DB migrations (Prisma + TimescaleDB)
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: timescale/timescaledb-ha:pg18-ts2.28
+        env:
+          POSTGRES_USER: fx
+          POSTGRES_PASSWORD: fx_ci_password
+          POSTGRES_DB: fx
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fx -d fx"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://fx:fx_ci_password@localhost:5432/fx
+      CREDENTIALS_ENCRYPTION_KEY: ZGV2LW9ubHktY3JlZGVudGlhbHMta2V5LTMyYnl0ZXM=
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Destructive-migration guard
+        run: node scripts/check-migrations.mjs
+
+      - name: Apply migrations (prisma migrate deploy)
+        run: pnpm db:deploy
+
+      - name: Schema drift check (history ⇔ schema.prisma)
+        run: pnpm --filter @fx/node-api exec prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Apply TimescaleDB layer (hypertables/CAGGs/policies)
+        run: pnpm db:timescale
+
+      - name: Seed dev fixtures (BE-023)
+        run: pnpm seed:dev
+
+      - name: Re-apply TimescaleDB layer (idempotency) + refresh CAGGs
+        run: pnpm db:timescale -- --refresh
+
   docker:
     name: Docker · ${{ matrix.service.name }}
     runs-on: ubuntu-latest

@@ -14,10 +14,12 @@ import {
   serializerCompiler,
   validatorCompiler,
 } from 'fastify-type-provider-zod';
-import { type AuditSink, LogAuditSink } from './audit.js';
+import { type AuditSink, DbAuditSink, LogAuditSink } from './audit.js';
 import { registerContext } from './context.js';
+import type { PrismaClient } from './db.js';
 import type { Env } from './env.js';
 import { EventBus } from './events.js';
+import { registerAuditRoutes } from './routes/audit.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerWsRoutes } from './routes/ws.js';
 
@@ -26,7 +28,17 @@ declare module 'fastify' {
     env: Env;
     eventBus: EventBus;
     auditSink: AuditSink;
+    prisma: PrismaClient | null;
   }
+}
+
+export interface BuildAppOptions {
+  /**
+   * BE-130 — when a Prisma client is provided (server.ts always does), audits
+   * go to the append-only `audit_log` table and `GET /audit` is mounted.
+   * Without one (unit tests, OpenAPI emit) the Step-1.3 LogAuditSink is used.
+   */
+  prisma?: PrismaClient | null;
 }
 
 /**
@@ -34,7 +46,7 @@ declare module 'fastify' {
  * Factory (no listen) so tests use `app.inject()` and the OpenAPI emit script
  * can build without binding a port.
  */
-export async function buildApp(env: Env): Promise<FastifyInstance> {
+export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = fastify({
     // BE-010 — JSON Pino logs; request completion logged in onResponse below
     // so every line carries requestId/method/url/statusCode/responseTime/userId.
@@ -49,9 +61,20 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
+  const prisma = opts.prisma ?? null;
   app.decorate('env', env);
   app.decorate('eventBus', new EventBus());
-  app.decorate('auditSink', new LogAuditSink(app.log)); // swapped for DB sink in Step 1.4 (BE-130)
+  app.decorate('prisma', prisma);
+  // BE-130 — DB-backed append-only sink when a client is available.
+  const auditSink: AuditSink = prisma
+    ? new DbAuditSink(prisma, app.log)
+    : new LogAuditSink(app.log);
+  app.decorate('auditSink', auditSink);
+  if (prisma) {
+    app.addHook('onClose', async () => {
+      await prisma.$disconnect();
+    });
+  }
 
   // BE-015 — OpenAPI 3.1 from route schemas; Swagger UI in non-prod only.
   await app.register(swagger, {
@@ -147,6 +170,7 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
 
   registerHealthRoutes(app, env);
   registerWsRoutes(app, env);
+  registerAuditRoutes(app); // BE-130 — GET /audit (503 without a DB client)
 
   return app;
 }

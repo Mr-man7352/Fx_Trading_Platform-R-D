@@ -19,3 +19,6 @@ out/
 
 # Logs
 *.log
+
+# Prisma generated client (BE-021) — regenerate with `pnpm db:generate`
+apis/node-api/src/generated/

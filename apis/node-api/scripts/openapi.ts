@@ -12,6 +12,8 @@ const env = loadEnv({
   NODE_ENV: 'test',
   TRADING_MODE: 'paper',
   INTERNAL_API_TOKEN: 'openapi-emit-placeholder-token',
+  DATABASE_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder',
+  CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64'),
 });
 
 const app = await buildApp(env);

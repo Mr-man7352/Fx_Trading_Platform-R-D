@@ -4,12 +4,15 @@
  * guarantees graceful shutdown within 30 s of SIGTERM/SIGINT.
  */
 import { buildApp } from './app.js';
+import { createPrismaClient } from './db.js';
 import { loadEnv } from './env.js';
 
 const SHUTDOWN_TIMEOUT_MS = 30_000;
 
 const env = loadEnv();
-const app = await buildApp(env);
+// BE-130 — real boot always uses the DB audit sink. Connection is lazy, so a
+// down DB doesn't block boot; the first query surfaces the failure loudly.
+const app = await buildApp(env, { prisma: createPrismaClient(env) });
 
 await app.listen({ port: env.API_PORT, host: '0.0.0.0' });
 app.log.info(

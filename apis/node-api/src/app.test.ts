@@ -14,6 +14,8 @@ function testEnv(overrides: Record<string, string> = {}) {
     INTERNAL_API_TOKEN: TOKEN,
     LOG_LEVEL: 'fatal',
     CORS_ALLOWED_ORIGINS: 'http://localhost:3000',
+    DATABASE_URL: 'postgresql://fx:fx@localhost:5432/fx',
+    CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
     ...overrides,
   });
 }

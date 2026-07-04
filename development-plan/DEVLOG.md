@@ -9,13 +9,17 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 
 ---
 
-## Current state (updated 2026-07-03)
+## Current state (updated 2026-07-04)
 
-- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015).
-- **Next:** Step 1.4 — Database schema (BE-020…023, BE-131): TimescaleDB
-  hypertables/CAGGs/retention, Prisma schema, migration pipeline, seeds,
-  encrypted broker credentials. Also swap `LogAuditSink` for the DB-backed
-  append-only `audit_log` sink (BE-130) behind the existing `AuditSink` interface.
+- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015), Step 1.4 (DB schema: BE-020…023, BE-130, BE-131).
+- **Next:** Step 1.5 — Quant service scaffold (QN-001…005): replace the
+  `services/quant` stub internals (FastAPI + gRPC), `fx_common`, Pydantic
+  codegen from `@fx/types` JSON Schema. Compose wiring (name `quant`, port
+  5000, `/healthz`) must stay identical.
+- **First CI run after Step 1.4:** watch the new `migrations` job — the init
+  migration was hand-authored (see entry below); the drift check will flag any
+  naming mismatch vs `schema.prisma`. Fix by adjusting the migration SQL, not
+  the schema.
 - **Repo:** `Mr-man7352/Fx_Trading_Platform-R-D` → GHCR images
   `ghcr.io/mr-man7352/fx-{node-api,dashboard,quant}` (SHA + latest tags on main).
 - **No production server yet** — BE-006 delivered as scripts + runbook only
@@ -44,6 +48,12 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
   standalone dir.
 - **Phase 1 auth:** internal service token stand-in; all user-facing auth (UI +
   API) lands in Phase 5. Broker creds seeded via env/CLI until then.
+- **DB schema (Step 1.4):** Prisma migrations = relational DDL only; every
+  Timescale/pgvector-index object goes in `apis/node-api/prisma/timescale.sql`
+  (idempotent, applied by `pnpm db:timescale` after `db:deploy`) — NEVER in a
+  migration, or the CI drift check breaks. Destructive migration SQL needs a
+  `-- destructive-ok: <reason>` marker. Credential envelope format is
+  `v1:base64(iv‖tag‖ct)` AES-256-GCM — Python quant must match it (QN-0xx).
 
 ## Conventions
 
@@ -54,6 +64,65 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
   (compose), `pnpm build|test|lint|typecheck|check-env`.
 
 ## Entries
+
+### 2026-07-04 — Step 1.4: Database schema (BE-020…023, BE-130, BE-131)
+
+- **Prisma 7.8** (driver-adapter era): `apis/node-api/prisma/schema.prisma` —
+  all 20 tables from system design §7 (6 time-series, 10 trading/audit, 4
+  auth/compliance), snake_case mapping, timestamptz(6) everywhere,
+  `agent_memory.embedding vector(1536)` (`Unsupported`; write via
+  `$executeRaw`). Client generated to `src/generated/prisma` (gitignored;
+  `prisma generate` runs via pre-scripts on dev/build/typecheck/test).
+  `prisma.config.ts` holds datasource/seed config; placeholder URL fallback so
+  `generate` works without a `.env` (CI checks job).
+- **BE-020 split design:** relational DDL lives in Prisma migrations; ALL
+  Timescale objects (hypertable conversion, hierarchical CAGGs
+  `candles_m5→m15→h1→h4→d1` off M1 base, refresh/compression/retention
+  policies) + the pgvector HNSW index live in `prisma/timescale.sql`, applied
+  statement-by-statement OUTSIDE a transaction by `pnpm db:timescale`
+  (`scripts/apply-timescale.ts`, idempotent, `--refresh` flag materializes
+  CAGGs). Why: CAGG creation can't run in Prisma's per-migration transaction,
+  and keeping custom objects out of migrations keeps the CI drift check clean.
+  D1 buckets close at 00:00 UTC (not NY 17:00) — noted in the SQL for later.
+  Retention: ticks 90 d, spreads_hist 180 d; candles/features kept forever.
+- **Init migration `20260704000000_init` was HAND-AUTHORED** (sandbox couldn't
+  reach binaries.prisma.sh — see quirks) following Prisma naming conventions;
+  validated with libpg_query (parses, 75 stmts). CI's new `migrations` job
+  (timescaledb-ha service container) runs: destructive guard → `migrate
+  deploy` → `migrate diff --exit-code` drift check → `db:timescale` → seeds →
+  idempotency re-run. Any hand-authoring mistake surfaces there.
+- **BE-022:** `scripts/check-migrations.mjs` — destructive SQL (DROP
+  TABLE/COLUMN, statement-anchored TRUNCATE, DELETE FROM, ALTER…TYPE, …) fails
+  CI unless the file carries `-- destructive-ok: <reason>`. Verified both paths.
+- **BE-023:** `prisma/seed.ts` (`pnpm seed:dev` → `prisma db seed`):
+  dev@fx.local (admin), invite `FX-DEV-0001`, 2 880 deterministic M1 EUR/USD
+  candles (seeded LCG), fixture signal + baseline row, sealed practice cred.
+- **BE-131:** `src/crypto/credentials.ts` — AES-256-GCM envelope
+  `v1:base64(iv‖tag‖ct)`, AAD `fx-broker-credentials:v1`, key =
+  `CREDENTIALS_ENCRYPTION_KEY` (base64 32 B); format documented for Python
+  decrypt. 8 unit tests (round-trip/tamper/wrong-key/redaction).
+  `pnpm seed:creds` seals real OANDA creds from env (Phase-5 settings path
+  replaces this).
+- **BE-130:** `DbAuditSink` behind the existing `AuditSink` interface (swap is
+  invisible to callers; failed appends log at error, never 500). Append-only
+  enforced in-DB: triggers block UPDATE/DELETE/TRUNCATE on `audit_log`.
+  `GET /audit` (paginated/filterable, contracts `AuditLog*` in `@fx/types`,
+  now in openapi.json) — 503 when built without a DB client; `buildApp(env,
+  { prisma })` optional param keeps unit tests DB-free; `server.ts` always
+  passes a client (lazy connect).
+- Env: `DATABASE_URL` + `CREDENTIALS_ENCRYPTION_KEY` now REQUIRED by
+  `env.ts` — **existing `.env` files need the new key or boot fails (by
+  design)**; `.env.example` has a dev-only value. Compose api service gained
+  the missing `INTERNAL_API_TOKEN`/`CORS_ALLOWED_ORIGINS` + new key;
+  docker-stack.yml requires all three (`:?` guards).
+- Verified (sandbox): workspace-wide lint/typecheck/test/build green (26 tests
+  in node-api incl. new crypto + sink tests), openapi emit includes `/audit`,
+  both SQL files parse via libpg_query, destructive guard pass+fail paths,
+  YAML valid. **NOT verified (no Docker/root in sandbox):** live `migrate
+  deploy`/drift check/CAGGs/seeds against a real DB (CI `migrations` job +
+  `pnpm stack:up && pnpm db:deploy && pnpm db:timescale && pnpm seed:dev`
+  locally), `prisma generate` output (typechecked against a stub of the
+  documented client surface), Docker image rebuilds.
 
 ### 2026-07-03 — Step 1.3: Fastify bootstrap (BE-010…015)
 

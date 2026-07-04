@@ -65,6 +65,25 @@ Connect to the database:
 docker compose -f infra/docker-compose.local.yml exec db psql -U fx -d fx
 ```
 
+## Database (Step 1.4 — BE-020…023)
+
+The DB must be running first (`pnpm stack:up`, or just the db service:
+`docker compose -f infra/docker-compose.local.yml up -d db`).
+
+```bash
+pnpm db:migrate            # DEV: create + apply a new migration from schema changes
+pnpm db:deploy             # apply committed migrations (what CI/prod runs)
+pnpm db:timescale          # apply hypertables/CAGGs/compression/retention (idempotent; run after deploy)
+pnpm db:timescale -- --refresh   # …and materialize all candle CAGGs (after seeds/backfills)
+pnpm db:generate           # regenerate the Prisma client (also runs via pre-scripts)
+pnpm seed:dev              # deterministic fixtures: dev@fx.local, invite FX-DEV-0001, EUR/USD candles, signal
+pnpm seed:creds            # seal real OANDA creds from env (OANDA_API_TOKEN, OANDA_ACCOUNT_ID)
+pnpm check-migrations      # destructive-SQL guard (CI runs this on every PR)
+pnpm --filter @fx/node-api db:studio   # Prisma Studio UI
+```
+
+Typical first-time DB setup: `pnpm stack:up && pnpm db:deploy && pnpm db:timescale && pnpm seed:dev`.
+
 ## Quality checks (what CI runs)
 
 ```bash

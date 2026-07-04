@@ -61,6 +61,10 @@ services:
       API_PORT: "4000"
       LOG_LEVEL: ${LOG_LEVEL:-info}
       GIT_COMMIT: ${TAG}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS}
+      # BE-131 — `openssl rand -base64 32`; losing it orphans sealed credentials.
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?set CREDENTIALS_ENCRYPTION_KEY}
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       REDIS_URL: redis://redis:6379
       QUANT_URL: http://quant:5000

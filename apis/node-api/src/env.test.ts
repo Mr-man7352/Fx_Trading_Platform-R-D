@@ -1,10 +1,28 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadEnv } from './env.js';
 
-/** Minimum required keys post-BE-013 (INTERNAL_API_TOKEN is mandatory). */
-const base = { TRADING_MODE: 'paper', INTERNAL_API_TOKEN: 'test-internal-token-16ch' };
+/** Minimum required keys post-Step-1.4 (token, DB URL, credentials key). */
+const base = {
+  TRADING_MODE: 'paper',
+  INTERNAL_API_TOKEN: 'test-internal-token-16ch',
+  DATABASE_URL: 'postgresql://fx:fx@localhost:5432/fx',
+  // base64 of 32 bytes — test-only value.
+  CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+};
 
 describe('BE-002 env loader', () => {
+  it('rejects a non-postgres DATABASE_URL and a short CREDENTIALS_ENCRYPTION_KEY', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit called');
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => loadEnv({ ...base, DATABASE_URL: 'mysql://nope' })).toThrow('exit called');
+    expect(() =>
+      loadEnv({ ...base, CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(16, 1).toString('base64') }),
+    ).toThrow('exit called');
+    exit.mockRestore();
+  });
+
   it('parses a valid environment with defaults', () => {
     const env = loadEnv({ ...base });
     expect(env.TRADING_MODE).toBe('paper');
