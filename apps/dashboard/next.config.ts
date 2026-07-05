@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   // BE-004 — self-contained server bundle for the Docker image.
   output: 'standalone',
   // Shared workspace packages are consumed as TS source until they ship builds.
-  transpilePackages: ['@fx/types', '@fx/api-client', '@fx/auth-client'],
+  transpilePackages: ['@fx/types', '@fx/api-client', '@fx/auth-client', '@fx/ui'],
 };
 
 export default nextConfig;

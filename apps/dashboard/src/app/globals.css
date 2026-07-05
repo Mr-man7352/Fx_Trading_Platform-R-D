@@ -1,15 +1,6 @@
-/* Minimal reset — Tailwind v4 + @fx/ui theme arrives with FE-010 (Step 1.7). */
-:root {
-  color-scheme: dark;
-}
+/* FE-010 — Tailwind v4 + @fx/ui design tokens. */
+@import 'tailwindcss';
+@import '@fx/ui/theme.css';
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  background: #0b0e14;
-  color: #e6e8ee;
-}
+/* @fx/ui is consumed as TS source — tell Tailwind to scan it for class names. */
+@source '../../../../packages/ui/src';
