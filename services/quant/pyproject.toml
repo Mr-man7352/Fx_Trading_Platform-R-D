@@ -15,8 +15,14 @@ dependencies = [
   "pydantic>=2.9",
   "pydantic-settings>=2.5",
   "httpx>=0.27",            # QN-020/021 OANDA + Twelve Data clients (also TestClient)
+  "bullmq>=2.0",            # QN-020 stream → market-ticks queue (Node BE-040 consumes)
+  "asyncpg>=0.29",          # QN-021/022 candle + news I/O into TimescaleDB
   "fx-common",
 ]
+
+[project.scripts]
+# `uv run fx-market <stream|backfill|sentiment>` (same as `python -m app.market`).
+fx-market = "app.market.__main__:main"
 
 [dependency-groups]
 dev = [
@@ -74,6 +80,11 @@ ignore_missing_imports = true
 # QN-022 — FinBERT's ML deps live in the optional `ml` group; they are imported
 # lazily and are not present in the default (or CI) environment.
 module = ["transformers.*", "torch.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# QN-020/021/022 runner deps — imported lazily; no bundled type stubs.
+module = ["bullmq.*", "asyncpg.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

@@ -94,6 +94,50 @@ services:
       timeout: 3s
       retries: 5
 
+  worker:
+    # BE-040 — market-data worker: consumes ticks from the `market-ticks` queue,
+    # aggregates M1 candles into TimescaleDB, enqueues a `signals` job per H1
+    # close. Same image as `api`; only the command differs (dist/workers/main.js
+    # is built alongside the server — see apis/node-api build script).
+    build:
+      context: ..
+      dockerfile: apis/node-api/Dockerfile
+    command: ["node", "dist/workers/main.js"]
+    environment:
+      NODE_ENV: production
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GIT_COMMIT: ${GIT_COMMIT:-local}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-ZGV2LW9ubHktY3JlZGVudGlhbHMta2V5LTMyYnl0ZXM=}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # QN-020 — OANDA price stream → `market-ticks`. Opt-in (needs OANDA creds):
+  #   docker compose -f infra/docker-compose.local.yml --profile ingest up -d quant-stream
+  quant-stream:
+    profiles: ["ingest"]
+    build:
+      context: ..
+      dockerfile: services/quant/Dockerfile
+    command: ["python", "-m", "app.market", "stream"]
+    environment:
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_URL: redis://redis:6379
+      OANDA_API_TOKEN: ${OANDA_API_TOKEN:-}
+      OANDA_ACCOUNT_ID: ${OANDA_ACCOUNT_ID:-}
+      OANDA_ENVIRONMENT: ${OANDA_ENVIRONMENT:-practice}
+      MARKET_INSTRUMENTS: ${MARKET_INSTRUMENTS:-EUR_USD,GBP_USD,USD_JPY,XAU_USD}
+    depends_on:
+      redis:
+        condition: service_healthy
+
   web:
     build:
       context: ..

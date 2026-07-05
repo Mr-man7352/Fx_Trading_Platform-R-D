@@ -97,14 +97,13 @@ EIA_API_KEY=your-eia-key
 ### a. Bring up infrastructure (Postgres/TimescaleDB + Redis + services)
 
 ```bash
-open -a Docker                                                   # Docker Desktop must be running
-docker compose -f infra/docker-compose.local.yml up -d --build   # db, redis, quant, api, web
-docker compose -f infra/docker-compose.local.yml ps              # all should be "healthy"
+open -a Docker            # Docker Desktop must be running
+pnpm stack:up            # build + start db, redis, quant, api, web, worker (detached)
+pnpm stack:ps            # all should be "healthy"
 ```
 
-> Note: the root `stack:up` alias is currently misspelled `stack:uep` in
-> `package.json` — use the compose command above, or fix the script name (tiny
-> one-char change) when convenient.
+The stack now includes the **BE-040 `worker`** service (aggregates ticks → M1).
+The Node worker starts by default and idles until ticks arrive.
 
 ### b. Prepare the database (first time)
 
@@ -118,12 +117,42 @@ pnpm seed:creds
 
 ### c. Start the market-data worker (BE-040)
 
-The API and worker are **separate processes**. Start the worker to aggregate
-ticks → M1 candles and enqueue an H1 `signals` job on each bar close:
+`pnpm stack:up` already runs it in Docker. To run it directly (hot-reload) while
+coding instead:
 
 ```bash
 pnpm --filter @fx/node-api worker:market-data
 ```
+
+### c2. Run the ingestion runners (QN-020 / QN-021 / QN-022)
+
+These are now wired as CLI entrypoints. Each **no-ops with a clear log line** if
+its creds/config are missing, so they're safe to run in mock mode.
+
+```bash
+cd services/quant
+
+# QN-020 — stream OANDA prices → the `market-ticks` queue (Node worker consumes).
+uv run python -m app.market stream        # needs OANDA_* + REDIS_URL
+
+# QN-021 — backfill the last 6 months of candles → TimescaleDB (+ cross-check).
+uv run python -m app.market backfill      # needs OANDA_* + DATABASE_URL (+ TWELVE_DATA_API_KEY)
+
+# QN-022 — score unscored news with FinBERT and store sentiment.
+uv run python -m app.market sentiment     # needs DATABASE_URL + `uv sync --group ml`
+```
+
+Or in Docker — the stream has an opt-in `ingest` profile (needs OANDA creds in
+your env):
+
+```bash
+docker compose -f infra/docker-compose.local.yml --profile ingest up -d quant-stream
+# one-off backfill/sentiment inside the quant container:
+docker compose -f infra/docker-compose.local.yml run --rm quant python -m app.market backfill
+```
+
+Full local loop with live data: `stream` (producer) + the `worker` (consumer,
+already up) → M1 candles land in TimescaleDB → `GET /market/candles` serves them.
 
 ### d. Query the data (BE-045 REST — works as soon as candles exist)
 
@@ -138,15 +167,20 @@ curl -H "x-internal-token: $TOKEN" \
   "localhost:4000/market/news?instrument=EUR_USD&asOf=2026-03-10T12:00:00Z"
 ```
 
-### e. What runs today vs. what needs a thin runner
+### e. What runs today
 
-| Piece | Status |
+Everything is wired end to end — no missing entrypoints:
+
+| Piece | How to run |
 |---|---|
-| BE-040 worker, BE-042/044/045 REST + monitor | **Runnable now** (process + endpoints above) |
-| QN-020 OANDA stream, QN-021 backfill, QN-022 FinBERT | **Library modules + tests** — the logic is done and unit-tested, but they aren't yet wired to a CLI/scheduled entrypoint. Hooking the Python stream → `market-ticks` queue and a `backfill` command is a small next increment (happy to add it). |
+| BE-040 worker | `worker` service in `pnpm stack:up`, or `pnpm --filter @fx/node-api worker:market-data` |
+| BE-042/044/045 REST + monitor | `api` service — the `/market/*` endpoints above |
+| QN-020 OANDA stream | `uv run python -m app.market stream` (or `--profile ingest`) |
+| QN-021 backfill + cross-check | `uv run python -m app.market backfill` |
+| QN-022 FinBERT sentiment | `uv run python -m app.market sentiment` (`uv sync --group ml`) |
 
-Until that wiring lands, the worker consumes ticks from the `market-ticks`
-Redis queue — publish test ticks to it, or ask me to add the OANDA→queue runner.
+The stream publishes ticks to `market-ticks`; the worker consumes them and
+writes M1 candles that `GET /market/candles` then serves.
 
 ---
 

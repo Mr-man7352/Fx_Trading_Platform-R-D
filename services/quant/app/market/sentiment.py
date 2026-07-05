@@ -67,7 +67,7 @@ class FinBertModel:
     def _ensure(self) -> object:
         if self._pipeline is None:
             try:
-                from transformers import pipeline  # noqa: PLC0415  (lazy: heavy import)
+                from transformers import pipeline  # lazy: heavy optional-group import
             except ImportError as exc:  # pragma: no cover - exercised only without ml deps
                 raise RuntimeError(
                     "FinBERT needs the 'ml' dependency-group: `uv sync --group ml`"
@@ -84,7 +84,9 @@ class FinBertModel:
         for row in raw:
             probs = {r["label"].lower(): float(r["score"]) for r in row}
             label = max(probs, key=lambda k: probs[k])
-            out.append(SentimentScore(label=label, score=_signed(label, probs), probabilities=probs))
+            out.append(
+                SentimentScore(label=label, score=_signed(label, probs), probabilities=probs)
+            )
         return out
 
 

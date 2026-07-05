@@ -76,7 +76,9 @@ class OandaClient:
     ) -> None:
         self._account_id = account_id
         headers = {"Authorization": f"Bearer {api_token}"}
-        self._client = client or httpx.AsyncClient(base_url=rest_host, headers=headers, timeout=30.0)
+        self._client = client or httpx.AsyncClient(
+            base_url=rest_host, headers=headers, timeout=30.0
+        )
         # Streaming has no read timeout (long-lived); heartbeats keep it alive.
         self._stream = stream_client or httpx.AsyncClient(
             base_url=stream_host, headers=headers, timeout=httpx.Timeout(30.0, read=None)

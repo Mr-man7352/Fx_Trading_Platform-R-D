@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import httpx
@@ -9,8 +10,10 @@ import pytest
 
 from app.market.oanda_client import OandaClient, OandaError
 
+Handler = Callable[[httpx.Request], httpx.Response]
 
-def _client(handler, *, stream_handler=None) -> OandaClient:
+
+def _client(handler: Handler, *, stream_handler: Handler | None = None) -> OandaClient:
     rest = httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         base_url="https://api-fxpractice.oanda.com",
@@ -27,7 +30,7 @@ def _client(handler, *, stream_handler=None) -> OandaClient:
 
 
 def test_to_tick_parses_price_message() -> None:
-    msg = {
+    msg: dict[str, object] = {
         "type": "PRICE",
         "instrument": "EUR_USD",
         "time": "2026-03-10T14:00:00.123456789Z",

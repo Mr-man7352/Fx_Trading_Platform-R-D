@@ -42,6 +42,19 @@ class Settings(BaseSettings):
     # FinBERT model id (QN-022); the `ml` dependency-group must be installed to
     # load it. Kept configurable so a fine-tuned checkpoint can be swapped in.
     finbert_model: str = "ProsusAI/finbert"
+    # Ingestion runners (app.market CLI): where ticks/candles/news go.
+    redis_url: str = "redis://localhost:6379"
+    database_url: str | None = None
+    market_ticks_queue: str = "market-ticks"
+    # Instruments to stream/backfill (OANDA names). Comma-separated in env.
+    market_instruments: str = "EUR_USD,GBP_USD,USD_JPY,XAU_USD,WTICO_USD,BCO_USD"
+    # Backfill window + base granularity (QN-021).
+    backfill_months: int = 6
+    backfill_granularity: str = "M1"
+
+    @property
+    def instruments(self) -> list[str]:
+        return [s.strip() for s in self.market_instruments.split(",") if s.strip()]
 
     @property
     def oanda_rest_host(self) -> str:

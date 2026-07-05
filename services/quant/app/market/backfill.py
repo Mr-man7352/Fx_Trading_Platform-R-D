@@ -66,7 +66,7 @@ async def backfill_candles(
     pip: float = 0.0001,
     on_discrepancy: Callable[[str, datetime, float, float], None] | None = None,
 ) -> BackfillResult:
-    """Backfill [start, end) for one instrument×granularity; see module docstring."""
+    """Backfill [start, end) for one instrument x granularity; see module docstring."""
     result = BackfillResult(instrument=instrument, granularity=granularity)
     cursor = start
     bar_index = 0

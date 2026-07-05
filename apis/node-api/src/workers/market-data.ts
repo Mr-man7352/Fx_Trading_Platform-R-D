@@ -1,6 +1,6 @@
 import type { DataQualityFlag } from '@fx/types';
-import { type Job, Queue, Worker } from 'bullmq';
-import IORedis, { type Redis } from 'ioredis';
+import { type ConnectionOptions, type Job, Queue, Worker } from 'bullmq';
+import { Redis } from 'ioredis';
 import { createPrismaClient, type PrismaClient } from '../db.js';
 import type { Env } from '../env.js';
 import { DataQualityMonitor, type DataQualitySink } from '../market/data-quality.js';
@@ -33,11 +33,14 @@ export interface MarketDataWorkerHandle {
 }
 
 export function startMarketDataWorker(env: Env): MarketDataWorkerHandle {
-  const connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
+  const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+  // BullMQ bundles its own ioredis copy; passing our shared client trips a
+  // cross-version structural check. The instance is API-compatible at runtime.
+  const bullConnection = connection as unknown as ConnectionOptions;
   const prisma: PrismaClient = createPrismaClient(env);
   const repo = new MarketRepo(prisma);
   const monitor = new DataQualityMonitor(new RedisDataQualitySink(connection.duplicate()));
-  const signals = new Queue(SIGNALS_QUEUE, { connection });
+  const signals = new Queue(SIGNALS_QUEUE, { connection: bullConnection });
 
   const processor = new MarketDataProcessor(repo, monitor, async (t) => {
     await signals.add(
@@ -53,7 +56,7 @@ export function startMarketDataWorker(env: Env): MarketDataWorkerHandle {
       const { instrument, ts, bid, ask } = job.data;
       await processor.onTick(instrument, { ts: new Date(ts), bid, ask });
     },
-    { connection, concurrency: 4 },
+    { connection: bullConnection, concurrency: 4 },
   );
 
   // Stale-feed sweep: a feed that goes quiet raises a degraded flag (QN-020).

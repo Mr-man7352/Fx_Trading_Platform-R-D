@@ -22,13 +22,20 @@ class FakeModel:
         out: list[SentimentScore] = []
         for text in texts:
             label, probs = self._mapping[text]
-            signed = probs.get("positive", 0.0) if label == "positive" else -probs.get("negative", 0.0)
-            out.append(SentimentScore(label=label, score=signed if label != "neutral" else 0.0, probabilities=probs))
+            if label == "positive":
+                signed = probs.get("positive", 0.0)
+            elif label == "negative":
+                signed = -probs.get("negative", 0.0)
+            else:
+                signed = 0.0
+            out.append(SentimentScore(label=label, score=signed, probabilities=probs))
         return out
 
 
 def _h(id_: str, when: str, text: str) -> Headline:
-    return Headline(id=id_, published_at=datetime.fromisoformat(when).replace(tzinfo=UTC), text=text)
+    return Headline(
+        id=id_, published_at=datetime.fromisoformat(when).replace(tzinfo=UTC), text=text
+    )
 
 
 def test_score_headlines_binds_sentiment_to_published_at() -> None:

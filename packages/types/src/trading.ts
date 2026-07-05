@@ -7,10 +7,14 @@ import { z } from 'zod';
 export const TradingModeSchema = z.enum(['backtest', 'paper', 'live']);
 export type TradingMode = z.infer<typeof TradingModeSchema>;
 
-/** OANDA-style instrument name, e.g. EUR_USD, XAU_USD, BCO_USD. */
+/**
+ * OANDA-style instrument name, e.g. EUR_USD, XAU_USD, BCO_USD, WTICO_USD.
+ * Sides allow 2–6 chars to cover longer OANDA symbols (WTICO, and index CFDs
+ * like NAS100/SPX500 if ever added).
+ */
 export const InstrumentSchema = z
   .string()
-  .regex(/^[A-Z0-9]{2,4}_[A-Z0-9]{2,4}$/, 'Expected OANDA-style instrument, e.g. EUR_USD');
+  .regex(/^[A-Z0-9]{2,6}_[A-Z0-9]{2,6}$/, 'Expected OANDA-style instrument, e.g. EUR_USD');
 export type Instrument = z.infer<typeof InstrumentSchema>;
 
 export const TradeSideSchema = z.enum(['long', 'short']);

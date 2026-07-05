@@ -89,6 +89,30 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 
 ## Entries
 
+### 2026-07-05 — Step 1.6 follow-up: ingestion runners + worker service + stack:up fix
+
+- **Wired the QN-020…022 library modules to CLI entrypoints.** New
+  `services/quant/app/market/`: `publishers.py` (`RedisTickPublisher` adds
+  `tick` jobs to the BullMQ `market-ticks` queue in the exact Node `TickJob`
+  shape — `tick_to_job()`; logging fallback in mock mode), `dbio.py`
+  (asyncpg `PgCandleWriter` + news read/write; lazy import), `instruments.py`
+  (py mirror of the Node registry: Twelve Data symbol + pip), `runners.py`
+  (`run_stream`/`run_backfill`/`run_sentiment`, each a clean no-op when creds/
+  URLs are missing), `__main__.py` (`python -m app.market <stream|backfill|
+  sentiment>`; also a `fx-market` console script). Full loop: Python stream →
+  `market-ticks` → Node BE-040 worker → M1 in TimescaleDB → `/market/candles`.
+- **Deps (need `uv lock`):** `bullmq` (py) + `asyncpg` added to quant runtime;
+  mypy overrides for both (+ the earlier `transformers`/`torch`). Config gained
+  `redis_url`, `database_url`, `market_instruments`, `backfill_months`, etc.
+- **Compose:** added a `worker` service (Node BE-040, same image as `api`,
+  `command: node dist/workers/main.js`) that starts by default, and an opt-in
+  `quant-stream` service under the `ingest` profile (QN-020, needs OANDA creds).
+- **Fixed** the `stack:uep` → `stack:up` typo in root `package.json`.
+- Verified: `py_compile` all new files; compose YAML + package.json parse;
+  `stack:up` script present. New `tests/test_runners.py` covers the Node-compat
+  tick-job shape + the no-op guards (fakes; no bullmq/asyncpg needed). Commit
+  `e1b44b8` is the base Step 1.6; this follow-up is a separate commit.
+
 ### 2026-07-05 — Step 1.6: Market data ingestion (QN-020…022, BE-040…045)
 
 - **No new migration** — every table Step 1.6 writes (candles, ticks,

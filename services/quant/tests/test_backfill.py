@@ -45,7 +45,7 @@ class FakeOanda:
         *,
         from_time: datetime,
         count: int,
-        include_first: bool = True,  # noqa: ARG002
+        include_first: bool = True,
     ) -> list[Candle]:
         ahead = [b for b in self._bars if b.time >= from_time]
         return ahead[:count]

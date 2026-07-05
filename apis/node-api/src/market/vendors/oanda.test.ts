@@ -14,7 +14,8 @@ const oandaCandle = (time: string, c: number, complete = true) => ({
   time,
   volume: 10,
   complete,
-  mid: { o: String(c), h: String(c + 0.001), l: String(c - 0.001), c: String(c) },
+  // Fixed-decimal strings (like OANDA) so parsing yields exact 1.081 / 1.079.
+  mid: { o: c.toFixed(5), h: (c + 0.001).toFixed(5), l: (c - 0.001).toFixed(5), c: c.toFixed(5) },
 });
 
 async function collect(source: OandaCandleSource, from: Date, to: Date): Promise<CandleRow[]> {
