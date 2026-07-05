@@ -73,6 +73,15 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
   migration, or the CI drift check breaks. Destructive migration SQL needs a
   `-- destructive-ok: <reason>` marker. Credential envelope format is
   `v1:base64(iv‖tag‖ct)` AES-256-GCM — Python quant must match it (QN-0xx).
+- **Real FinBERT (`uv sync --group ml`) is deferred, not needed yet.** QN-022
+  stores signed sentiment scores but nothing downstream reads them yet — the
+  sentiment-analyst node in the multi-agent debate pipeline (Phase 2+) is the
+  first real consumer, and score *accuracy* only gets exercised at
+  QN-051/QN-054 (point-in-time backtests / quant-only-vs-+sentiment ablation,
+  Phase 4). Until then, keep running in mock mode (`run_sentiment` no-ops
+  cleanly without the `ml` group; tests use a fake `SentimentModel`) — installing
+  torch now is a large, unneeded download. Revisit when wiring the sentiment
+  analyst or backtesting.
 
 ## Conventions
 

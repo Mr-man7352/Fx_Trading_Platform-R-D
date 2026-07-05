@@ -49,6 +49,7 @@ docker compose -f infra/docker-compose.local.yml logs -f api      # follow logs 
 docker compose -f infra/docker-compose.local.yml restart api      # restart one service
 docker compose -f infra/docker-compose.local.yml up -d --build api  # rebuild + restart one service
 docker compose -f infra/docker-compose.local.yml down -v          # STOP + DELETE volumes (wipes DB/Redis data!)
+docker system prune -a # delete all unused images
 ```
 
 Quick health checks once running:

@@ -18,10 +18,24 @@ TradingMode = Literal["backtest", "paper", "live"]
 _DEFAULT_CONTRACTS_DIR = Path(__file__).resolve().parent / "contracts" / "schemas"
 
 
+def _find_dotenv() -> Path | None:
+    """Nearest `.env` walking up from this file (repo root in the monorepo layout)."""
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 class Settings(BaseSettings):
     """Env-backed settings; field names map to UPPER_SNAKE env vars."""
 
-    model_config = SettingsConfigDict(frozen=True)
+    model_config = SettingsConfigDict(
+        frozen=True,
+        env_file=_find_dotenv(),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     trading_mode: TradingMode = "paper"
     # 5001, not 5000 — macOS AirPlay Receiver squats on 5000 (DEVLOG conventions).
