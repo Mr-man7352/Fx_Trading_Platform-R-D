@@ -32,6 +32,33 @@ class Settings(BaseSettings):
     # Vendored @fx/types JSON Schemas (QN-003); consumed via fx_common.load_contract.
     fx_contracts_dir: Path = _DEFAULT_CONTRACTS_DIR
 
+    # ── Step 1.6 market data (QN-020…022) — all optional in mock-first mode ──
+    # Supply the practice-account values to stream/backfill against OANDA v20.
+    oanda_api_token: str | None = None
+    oanda_account_id: str | None = None
+    oanda_environment: Literal["practice", "live"] = "practice"
+    # Twelve Data free-tier key for the backfill cross-check (QN-021).
+    twelve_data_api_key: str | None = None
+    # FinBERT model id (QN-022); the `ml` dependency-group must be installed to
+    # load it. Kept configurable so a fine-tuned checkpoint can be swapped in.
+    finbert_model: str = "ProsusAI/finbert"
+
+    @property
+    def oanda_rest_host(self) -> str:
+        return (
+            "https://api-fxtrade.oanda.com"
+            if self.oanda_environment == "live"
+            else "https://api-fxpractice.oanda.com"
+        )
+
+    @property
+    def oanda_stream_host(self) -> str:
+        return (
+            "https://stream-fxtrade.oanda.com"
+            if self.oanda_environment == "live"
+            else "https://stream-fxpractice.oanda.com"
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:

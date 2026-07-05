@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "dev": "prisma generate && tsx watch src/server.ts",
+    "worker:market-data": "tsx watch src/workers/main.ts",
     "prebuild": "prisma generate",
-    "build": "tsup src/server.ts --format esm --clean",
+    "build": "tsup src/server.ts src/workers/main.ts --format esm --clean",
     "start": "node dist/server.js",
+    "start:worker:market-data": "node dist/workers/main.js",
     "openapi": "tsx scripts/openapi.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -34,8 +36,10 @@
     "@fx/types": "workspace:*",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "bullmq": "^5.34.0",
     "fastify": "^5.9.0",
     "fastify-type-provider-zod": "^7.0.0",
+    "ioredis": "^5.4.1",
     "pg": "^8.16.0",
     "zod": "^4.4.3"
   },

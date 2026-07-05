@@ -38,6 +38,23 @@ const EnvSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(100),
   /** BE-021 — Postgres/TimescaleDB connection string (Prisma + pg adapter). */
   DATABASE_URL: z.string().startsWith('postgres', 'Expected a postgres:// connection string'),
+  /** BE-040 — Redis connection for the BullMQ market-data + signals queues. */
+  REDIS_URL: z
+    .string()
+    .startsWith('redis', 'Expected a redis:// connection string')
+    .default('redis://localhost:6379'),
+  /**
+   * Step 1.6 market-data providers — all optional in mock-first mode: without
+   * them the OANDA stream/backfill, Twelve Data cross-check and macro ingest
+   * are inert (no-ops), but nothing fails to boot. Supply the practice-account
+   * values to run against live venues.
+   */
+  OANDA_API_TOKEN: z.string().optional(),
+  OANDA_ACCOUNT_ID: z.string().optional(),
+  OANDA_ENVIRONMENT: z.enum(['practice', 'live']).default('practice'),
+  TWELVE_DATA_API_KEY: z.string().optional(),
+  FRED_API_KEY: z.string().optional(),
+  EIA_API_KEY: z.string().optional(),
   /**
    * BE-131 — base64 of exactly 32 random bytes; seals broker credentials
    * (AES-256-GCM). Generate with `openssl rand -base64 32`. Rotation bumps

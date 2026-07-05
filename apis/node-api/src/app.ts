@@ -21,6 +21,7 @@ import type { Env } from './env.js';
 import { EventBus } from './events.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { registerMarketRoutes } from './routes/market.js';
 import { registerWsRoutes } from './routes/ws.js';
 
 declare module 'fastify' {
@@ -171,6 +172,7 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
   registerHealthRoutes(app, env);
   registerWsRoutes(app, env);
   registerAuditRoutes(app); // BE-130 — GET /audit (503 without a DB client)
+  registerMarketRoutes(app); // BE-042/BE-045 — /market/{instruments,candles,news}
 
   return app;
 }

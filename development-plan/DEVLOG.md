@@ -9,16 +9,28 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 
 ---
 
-## Current state (updated 2026-07-04)
+## Current state (updated 2026-07-05)
 
-- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015), Step 1.4 (DB schema: BE-020…023, BE-130, BE-131), Step 1.5 (quant scaffold: QN-001…005).
-- **⚠️ Step 1.5 needs one human action:** `cd services/quant && uv lock` on a
-  machine with uv (sandbox couldn't fetch a Python 3.13 interpreter) — commit
-  `uv.lock`, or CI's `uv sync --frozen` and the Docker build fail. Then run
-  `bash scripts/check_codegen.sh`; if the locked tool versions differ from the
-  ones used to generate committed output (grpcio-tools 1.81.1,
-  datamodel-code-generator 0.67.0, black 26.5.1, isort 8.0.1), regen + commit.
-- **Next:** Step 1.6 — Market data ingestion (QN-020…022, BE-040…045).
+- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015), Step 1.4 (DB schema: BE-020…023, BE-130, BE-131), Step 1.5 (quant scaffold: QN-001…005; `uv.lock` now committed in c909a00), Step 1.6 (market data ingestion: QN-020…022, BE-040…045).
+- **⚠️ Step 1.6 needs human actions (sandbox could not run installers/tests):**
+  1. `pnpm install` — Step 1.6 added `bullmq` + `ioredis` to `@fx/node-api`
+     (the mount blocks `unlink`, so pnpm can't install here). Needed to
+     typecheck the worker + run the API test suite.
+  2. `cd services/quant && uv lock` — `httpx` moved to runtime deps and a new
+     optional `ml` group (`transformers`, `torch`) was added for FinBERT
+     (QN-022). Re-lock (no 3.13 in sandbox). FinBERT itself: `uv sync --group ml`.
+  3. Run the suites: `pnpm --filter @fx/node-api test` (vitest can't run in the
+     sandbox — the committed node_modules holds macOS-arm64 natives) and
+     `cd services/quant && uv run pytest` (needs 3.13). What WAS verified here:
+     full `tsc --noEmit` clean across node-api + @fx/types (only the two
+     not-yet-installed `bullmq`/`ioredis` imports error); every new Python file
+     `py_compile`s; and 9 acceptance-critical pure-logic assertions executed
+     green (candle rollover/gap, DQ gap+stale, COT release-time, news dedupe,
+     H1 signal enqueue).
+  4. Optional, to exercise live venues: set `OANDA_API_TOKEN`/`OANDA_ACCOUNT_ID`
+     (practice), `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `EIA_API_KEY`.
+- **Next:** Step 1.7 — Design system (FE-010, FE-011). Cross-cutting obs/backup
+  epics (BE-140…142) still open.
 - **First CI run after Step 1.4:** watch the new `migrations` job — the init
   migration was hand-authored (see entry below); the drift check will flag any
   naming mismatch vs `schema.prisma`. Fix by adjusting the migration SQL, not
@@ -76,6 +88,69 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
   `QUANT_PORT=5001` + `QUANT_URL=http://localhost:5001`.
 
 ## Entries
+
+### 2026-07-05 — Step 1.6: Market data ingestion (QN-020…022, BE-040…045)
+
+- **No new migration** — every table Step 1.6 writes (candles, ticks,
+  spreads_hist, news_archive, macro_features, features) already exists from
+  Step 1.4. Nothing touched `schema.prisma`.
+- **Decision — market modules + worker live inside `@fx/node-api`**
+  (`src/market/*`, `src/workers/*`) rather than a new `workers/market-data`
+  package: cohesion with the Prisma client + `@fx/types`, unit-testable without
+  a new workspace/CI/Docker scaffold. Revisit if/when a second worker lands.
+- **`@fx/types` (`market.ts`):** Timeframe, Candle, market REST (candles query +
+  paginated response, instruments), point-in-time news (query + page), macro
+  feature, and data-quality flag contracts. Deliberately **not** added to
+  `contractSchemas` (QN-003 codegen) — Node consumes them directly in TS and the
+  Python side uses its own candle dataclass, so no Pydantic regen / no CI drift.
+- **BE-045:** `GET /market/instruments` (static registry in
+  `src/market/instruments.ts` — ~8 instruments: FX majors + XAU + WTI/Brent,
+  with OANDA/Twelve Data symbol maps + pipLocation; seeds QN-033), `GET
+  /market/candles` (typed OHLCV, `from/to/limit`, `nextFrom` cursor), and the
+  BE-042 `GET /market/news` PIT read. All DB-backed routes 503 without a Prisma
+  client, mirroring `/audit`. Registered in `app.ts`.
+- **BE-040:** `MarketDataProcessor` (pure: ticks → M1 candles via
+  `CandleAggregator`, persist on close, enqueue one `signals` job per H1 close)
+  + `startMarketDataWorker` BullMQ wiring (`market-ticks` in, `signals` out,
+  Redis pub/sub DQ fan-out, 10 s stale sweep). Only M1 is written; M5…D1 come
+  from the CAGGs. Worker process entry: `src/workers/main.ts`
+  (`pnpm --filter @fx/node-api worker:market-data`).
+- **BE-041:** pluggable `CandleSource`/`CrossCheckSource` seam
+  (`src/market/vendors/`) with OANDA (primary) + Twelve Data (cross-check)
+  adapters over an injectable `HttpClient`; `backfillCandles` orchestrator —
+  idempotent upsert + sampled cross-check → DQ monitor. New vendors need no job
+  change.
+- **BE-042:** archive lives in `MarketRepo` — dedup on {source, externalId|
+  headline}, immutable `published_at`, PIT read enforces `published_at <= asOf`.
+  Provider-swappable `NewsSource` (stub live source for now).
+- **BE-043:** release-time-aware macro (`src/market/macro.ts`) — `cotReleaseTs`
+  maps a Tuesday COT reference to the following Friday 19:30 UTC print (the
+  no-look-ahead pivot); FRED/EIA adapters gated on keys (no-op without),
+  idempotent upsert on series×release×revision.
+- **BE-044:** `DataQualityMonitor` — gap / stale (>30 s) / spread-anomaly /
+  cross-check flags; a critical flag marks the instrument `degraded`
+  (`degradedInstruments()` is what the Phase-3 risk gate will read). Weekend
+  heuristic suppresses false gap alerts (DST-exact refinement = QN-047).
+- **QN-020 (Python):** minimal OANDA v20 client (`app/market/oanda_client.py` —
+  auth + pricing stream + candles only, no orders) + `TickStreamAdapter`
+  (publishes ticks via a `TickPublisher` Protocol → prod pushes `market-ticks`;
+  raises degraded on a >30 s quiet feed). httpx injectable for tests.
+- **QN-021:** `backfill_candles` (paginated 5,000/req, idempotent via a
+  `CandleWriter` Protocol) + `TwelveDataClient` sampled cross-check.
+- **QN-022:** FinBERT scoring behind a `SentimentModel` Protocol (lazy
+  transformers import; `ml` group) with signed [-1,1] scores kept bound to
+  `published_at`; `point_in_time()` is the no-look-ahead filter. Tests inject a
+  fake model — no torch needed.
+- **Env:** `REDIS_URL` added to `env.ts` (defaulted so tests/boot don't break) +
+  optional `OANDA_*`/`TWELVE_DATA_API_KEY`/`FRED_API_KEY`/`EIA_API_KEY`
+  (commented in `.env.example` so check-env keeps them optional). Quant
+  `Settings` gained the OANDA/Twelve Data/FinBERT fields + host helpers.
+- Verified (sandbox limits — see Current state ⚠️): `tsc --noEmit` clean across
+  node-api + @fx/types (only the un-installed `bullmq`/`ioredis` worker imports
+  error); all new Python files `py_compile`; 9 pure-logic runtime assertions
+  green (candles/DQ/macro/news/processor). **NOT run here:** `pnpm install`,
+  vitest (macOS-arm64 natives in the committed node_modules), `uv lock`/pytest
+  (no 3.13), Docker, live OANDA/vendor calls.
 
 ### 2026-07-04 — Step 1.5: Quant service scaffold (QN-001…005)
 
