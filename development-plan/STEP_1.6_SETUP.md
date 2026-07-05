@@ -4,7 +4,7 @@ Everything for Step 1.6 was built **mock-first**: it compiles and the logic is
 tested, but a few things only *you* can do (install packages, supply real API
 keys, run against Docker). This is your checklist. Companion refs:
 [`COMMANDS.md`](../COMMANDS.md) (daily driver) and
-[`DEVLOG.md`](DEVLOG.md) (what changed + why).
+[`DEVLOG-phase1.md`](DEVLOG-phase1.md) (what changed + why).
 
 > Commit: `e1b44b8` (Step 1.6) on top of `c909a00` (Step 1.5). Both are committed.
 

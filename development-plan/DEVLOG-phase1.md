@@ -11,11 +11,15 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 
 ## Current state (updated 2026-07-05)
 
-- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015), Step 1.4 (DB schema: BE-020…023, BE-130, BE-131), Step 1.5 (quant scaffold: QN-001…005; `uv.lock` now committed in c909a00), Step 1.6 (market data ingestion: QN-020…022, BE-040…045).
-- **⚠️ Step 1.6 needs human actions (sandbox could not run installers/tests):**
-  1. `pnpm install` — Step 1.6 added `bullmq` + `ioredis` to `@fx/node-api`
-     (the mount blocks `unlink`, so pnpm can't install here). Needed to
-     typecheck the worker + run the API test suite.
+- **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015), Step 1.4 (DB schema: BE-020…023, BE-130, BE-131), Step 1.5 (quant scaffold: QN-001…005; `uv.lock` now committed in c909a00), Step 1.6 (market data ingestion: QN-020…022, BE-040…045), Step 1.7 (design system: FE-010, FE-011 + FE-110 banner — see entry).
+- **Phase 1 is code-complete** (cross-cutting BE-140…142 obs/backup epics still open, deliberately deferred). **Phase 2 entries go in [`DEVLOG-phase2.md`](DEVLOG-phase2.md)** — this file stays as the Phase-1 record; keep this Current state block updated only until the Phase-2 log takes over.
+- **⚠️ Steps 1.6 + 1.7 need human actions (sandbox could not run installers/tests):**
+  1. `pnpm install` — Step 1.6 added `bullmq` + `ioredis` to `@fx/node-api`;
+     Step 1.7 added the new `packages/ui` workspace (radix, cva, clsx,
+     tailwind-merge) and `tailwindcss` + `@tailwindcss/postcss` to the
+     dashboard (the mount blocks `unlink`, so pnpm can't install here). Then
+     run `pnpm --filter @fx/ui test` + `pnpm --filter @fx/dashboard typecheck`
+     + `pnpm dev` and eyeball `/dashboard` (theme, ModeBadge, kill-switch dialog).
   2. `cd services/quant && uv lock` — `httpx` moved to runtime deps and a new
      optional `ml` group (`transformers`, `torch`) was added for FinBERT
      (QN-022). Re-lock (no 3.13 in sandbox). FinBERT itself: `uv sync --group ml`.
@@ -29,8 +33,9 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
      H1 signal enqueue).
   4. Optional, to exercise live venues: set `OANDA_API_TOKEN`/`OANDA_ACCOUNT_ID`
      (practice), `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `EIA_API_KEY`.
-- **Next:** Step 1.7 — Design system (FE-010, FE-011). Cross-cutting obs/backup
-  epics (BE-140…142) still open.
+- **Next:** Phase 2 → Step 2.1 — Broker abstraction & execution adapters
+  (QN-030, QN-032…034; QN-031 optional). Log it in `DEVLOG-phase2.md`.
+  Cross-cutting obs/backup epics (BE-140…142) still open.
 - **First CI run after Step 1.4:** watch the new `migrations` job — the init
   migration was hand-authored (see entry below); the drift check will flag any
   naming mismatch vs `schema.prisma`. Fix by adjusting the migration SQL, not
@@ -41,6 +46,11 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
   (`infra/DEPLOY.md`); nothing is deployed.
 
 ## Standing decisions (don't re-litigate without cause)
+
+> **These have moved.** As of Phase 2, the *current* Standing decisions +
+> Conventions live in [`DEVLOG-phase2.md`](DEVLOG-phase2.md) as the single
+> source of truth. The copy below is the Phase-1 historical snapshot — read the
+> Phase-2 log for the live version.
 
 - **DB image:** `timescale/timescaledb-ha:pg18-ts2.28` — community TimescaleDB
   (CAGGs/compression/retention) + pgvector. Identical image dev and prod; prod
@@ -97,6 +107,56 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
   `QUANT_PORT=5001` + `QUANT_URL=http://localhost:5001`.
 
 ## Entries
+
+### 2026-07-05 — Step 1.7: Design system (FE-010, FE-011, FE-110 banner)
+
+- **New `packages/ui` workspace (`@fx/ui`)** — consumed as TS source (exports
+  point at `src/`, no build script) via Next `transpilePackages`, matching how
+  the dashboard already consumes the other packages. Internal imports are
+  extensionless (`moduleResolution: Bundler`) — NOT `.js`-suffixed NodeNext
+  style like the node packages, or webpack won't resolve them.
+- **FE-010 theme:** `packages/ui/src/styles/theme.css` — Tailwind v4 CSS-first
+  config. `:root` variables (oklch, dark-first, `color-scheme: dark`; no light
+  theme in Phase 1) + `@theme inline` mapping to Tailwind color tokens. shadcn
+  naming (background/card/primary/destructive/…) plus trading tokens:
+  `--color-profit/loss`, `--color-mode-{backtest,paper,live}`, `--color-warning`.
+  Apps consume via `@import 'tailwindcss'; @import '@fx/ui/theme.css';` and a
+  `@source '../../../../packages/ui/src'` line so Tailwind scans the ui source
+  for class names (it's outside the app root).
+- **FE-010 primitives (hand-vendored shadcn — deliberate, the CLI can't run in
+  the sandbox and the code is meant to be owned):** Button (+Slot `asChild`),
+  Badge, Card family, Dialog (radix), Input, Label, Separator, Skeleton, Alert.
+  No icon library — the two icons needed (dialog X, kill-switch octagon) are
+  inline SVGs; add lucide-react only when a real need appears.
+- **FE-011 compositions (`src/trading/`):** `<AppShell>` (slot-based, RSC-safe:
+  header brand/right, banner strip, desktop sidebar, mobile sticky footer —
+  the FE-130 one-tap seam), `<ModeBadge mode>` (typed from `@fx/types`
+  `TradingMode`; live pulses red, paper amber, backtest blue),
+  `<PnLTile>` (sign-aware `formatSigned` with U+2212 minus, profit/loss
+  colouring, `stale` flag for FE-120), `<AgentVoteCard>` (buy/sell/hold/veto +
+  confidence meter + pinned model id; debate payload contract is Phase 3),
+  `<KillSwitchButton>` (destructive trigger → radix confirm dialog; **2FA seam:
+  `requireTwoFactorCode` prop + `twoFactorCode` arg to `onConfirm` — Phase 5
+  flips the flag, contract unchanged**; `compact` icon variant for mobile).
+- **FE-110 (Phase-1 part):** `<DisclaimerBanner>` + exported `DISCLAIMER_TEXT`
+  (research/educational, not financial advice, CFD risk). Acknowledgement flow
+  (`users.disclaimer_accepted_at`) waits for Phase-5 auth.
+- **Dashboard wiring:** `@tailwindcss/postcss` + `postcss.config.mjs`,
+  `globals.css` reduced to the two imports + `@source`, `@fx/ui` added to
+  deps + `transpilePackages`. `/dashboard` page now composes
+  AppShell/ModeBadge/PnLTiles/AgentVoteCards/KillSwitch with fixture data
+  (mode read from `TRADING_MODE`, `.catch('paper')`); kill-switch `onConfirm`
+  is a client-wrapper no-op until BE-072 (Phase 3).
+- Tests: `packages/ui/src/index.test.tsx` — SSR markup smoke tests via
+  `react-dom/server` (no jsdom): cn merge, every TradingMode has a badge style,
+  formatSigned/pnlDirection, stale indicator, confidence clamping, kill-switch
+  trigger a11y label + closed-dialog SSR, disclaimer wording, AppShell slots.
+- Verified (sandbox): JSON/tsconfig parse; theme.css braces + every `@theme`
+  var reference resolves to a `:root` definition; `formatSigned` expectations
+  cross-checked against Node Intl; `tsc --noEmit` on packages/ui shows ONLY
+  missing-module cascades (deps not installed here) — no syntax errors.
+  **NOT verified:** `pnpm install`, vitest run, dashboard typecheck/build,
+  visual render (see ⚠️ above — biome also can't run here: macOS-arm64 native).
 
 ### 2026-07-05 — Step 1.6 follow-up: ingestion runners + worker service + stack:up fix
 

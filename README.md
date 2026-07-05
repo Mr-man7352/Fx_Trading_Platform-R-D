@@ -3,7 +3,8 @@
 AI-powered FX swing-trading platform (H1 → D1) — deterministic quant core, LangGraph.js
 multi-agent confirmation layer, non-LLM risk gate with final authority. See
 [`development-plan/FX_PRD.md`](development-plan/FX_PRD.md). Session context and
-build history: [`DEVLOG.md`](DEVLOG.md). Command reference: [`COMMANDS.md`](COMMANDS.md).
+build history: [`DEVLOG-phase1.md`](development-plan/DEVLOG-phase1.md) and
+[`DEVLOG-phase2.md`](development-plan/DEVLOG-phase2.md). Command reference: [`COMMANDS.md`](COMMANDS.md).
 
 > Invite-only, own-broker-account-only, personal/research use. CFDs are high-risk
 > leveraged products. Not financial advice.
