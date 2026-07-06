@@ -30,6 +30,8 @@ if TYPE_CHECKING:
         Broker,
         BrokerPosition,
         BrokerTradeRecord,
+        BrokerTransaction,
+        ModifyTradeResult,
         OrderRequest,
         OrderResult,
     )
@@ -49,6 +51,10 @@ class BrokerAdapter(Protocol):
     """The QN-030 contract. Implementation: OandaAdapter (sole venue, ADR-005)."""
 
     broker: Broker
+    # High-water transaction id, seeded by connect() and advanced by
+    # get_transactions — the BE-052 reconciler's bootstrap when it has no
+    # persisted since-id yet.
+    last_transaction_id: str | None
 
     async def connect(self) -> None:
         """Authenticate + verify the account; raise BrokerError on failure."""
@@ -68,6 +74,24 @@ class BrokerAdapter(Protocol):
 
     async def close_order(self, broker_trade_id: str, units: float | None = None) -> OrderResult:
         """Close an open trade (fully, or `units` of it)."""
+        ...
+
+    async def modify_trade(
+        self,
+        broker_trade_id: str,
+        *,
+        stop_loss_price: float | None = None,
+        take_profit_price: float | None = None,
+    ) -> ModifyTradeResult:
+        """Amend SL/TP on an open broker trade."""
+        ...
+
+    async def get_transactions(self, since_txn_id: str | None = None) -> list[BrokerTransaction]:
+        """Account transactions since `since_txn_id` (exclusive), oldest first.
+
+        With no since-id, bootstraps from `last_transaction_id` (recorded at
+        connect) — implementations must NOT fall back to unbounded endpoints.
+        """
         ...
 
     async def get_history(self, since: datetime) -> list[BrokerTradeRecord]:

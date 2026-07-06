@@ -94,3 +94,120 @@ message PredictResponse {
   string model_version = 3;
   google.protobuf.Timestamp trained_at = 4;
 }
+
+// ─── BE-050…052 — ExecutionService (Step 2.2) ───────────────────────────────
+// Node orchestrates; Python owns broker I/O via the QN-030 adapter seam.
+
+service ExecutionService {
+  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+  rpc CloseTrade(CloseTradeRequest) returns (CloseTradeResponse);
+  rpc ModifyTrade(ModifyTradeRequest) returns (ModifyTradeResponse);
+  rpc ListOpenPositions(ListOpenPositionsRequest) returns (ListOpenPositionsResponse);
+  rpc GetTransactions(GetTransactionsRequest) returns (GetTransactionsResponse);
+}
+
+enum ExecutionStatus {
+  EXECUTION_STATUS_UNSPECIFIED = 0;
+  EXECUTION_STATUS_FILLED = 1;
+  EXECUTION_STATUS_PARTIAL = 2;
+  EXECUTION_STATUS_REJECTED = 3;
+}
+
+message PlaceOrderRequest {
+  string client_order_id = 1;
+  string instrument = 2;
+  TradeSide side = 3;
+  double units = 4;
+  optional double stop_loss_price = 5;
+  optional double take_profit_price = 6;
+}
+
+message PlaceOrderResponse {
+  ExecutionStatus status = 1;
+  string broker = 2;
+  optional string broker_order_id = 3;
+  optional string broker_trade_id = 4;
+  double requested_units = 5;
+  double filled_units = 6;
+  double remainder_units = 7;
+  optional double fill_price = 8;
+  optional string reason_code = 9;
+}
+
+message CloseTradeRequest {
+  string broker_trade_id = 1;
+  optional double units = 2; // omit / zero ⇒ full close
+}
+
+message CloseTradeResponse {
+  ExecutionStatus status = 1;
+  optional string broker_order_id = 2;
+  double filled_units = 3;
+  optional double fill_price = 4;
+  optional string reason_code = 5;
+}
+
+message ModifyTradeRequest {
+  string broker_trade_id = 1;
+  optional double stop_loss_price = 2;
+  optional double take_profit_price = 3;
+}
+
+message ModifyTradeResponse {
+  ExecutionStatus status = 1;
+  optional string reason_code = 2;
+}
+
+message ListOpenPositionsRequest {}
+
+message BrokerPositionMsg {
+  string instrument = 1;
+  TradeSide side = 2;
+  double units = 3;
+  double avg_price = 4;
+  double unrealized_pl = 5;
+  repeated string broker_trade_ids = 6;
+}
+
+message ListOpenPositionsResponse {
+  repeated BrokerPositionMsg positions = 1;
+}
+
+message GetTransactionsRequest {
+  string since_txn_id = 1;
+}
+
+// Per-trade close/reduce detail inside an ORDER_FILL (OANDA TradeReduce).
+// `trades_closed` = trades FULLY closed by the fill; `trade_reduced` = a trade
+// PARTIALLY closed. Real ORDER_FILL transactions carry trade ids ONLY here —
+// the reconciler must not rely on a top-level trade_id for fills.
+message TradeReduceMsg {
+  string trade_id = 1;
+  double units = 2; // absolute units closed/reduced
+  double price = 3;
+  double realized_pl = 4;
+  double financing = 5;
+}
+
+message BrokerTransactionMsg {
+  string id = 1;
+  string type = 2;
+  string instrument = 3;
+  optional string trade_id = 4; // top-level tradeID (SL/TP order txns — NOT fills)
+  optional double units = 5;
+  optional double price = 6;
+  optional double pl = 7;
+  optional double financing = 8;
+  optional double commission = 9;
+  string client_order_id = 10;
+  google.protobuf.Timestamp time = 11;
+  string reason = 12; // ORDER_FILL reason: MARKET_ORDER, STOP_LOSS_ORDER, …
+  optional string trade_opened_id = 13; // ORDER_FILL tradeOpened.tradeID
+  repeated TradeReduceMsg trades_closed = 14;
+  optional TradeReduceMsg trade_reduced = 15;
+}
+
+message GetTransactionsResponse {
+  repeated BrokerTransactionMsg transactions = 1;
+  string last_txn_id = 2;
+}

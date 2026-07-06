@@ -125,3 +125,80 @@ async def test_get_history_returns_closed_trades(rig: tuple[BrokerAdapter, Any])
     assert record.closed_at is not None
     # since-filter: nothing closed after the cutoff
     assert await adapter.get_history(datetime(2027, 1, 1, tzinfo=UTC)) == []
+
+
+async def test_modify_trade_updates_stop(rig: tuple[BrokerAdapter, Any]) -> None:
+    adapter, fake = rig
+    await adapter.connect()
+    placed = await adapter.place_order(_order())
+    assert placed.broker_trade_id
+    result = await adapter.modify_trade(placed.broker_trade_id, stop_loss_price=1.095)
+    assert result.status == "filled"
+    if isinstance(fake, FakeOanda):
+        assert fake._stop_loss[placed.broker_trade_id] == pytest.approx(1.095)
+
+
+async def test_get_transactions_after_fill(rig: tuple[BrokerAdapter, Any]) -> None:
+    adapter, _ = rig
+    await adapter.connect()
+    order = _order()
+    await adapter.place_order(order)
+    # No explicit since-id → bootstrap from the connect()-time high-water mark.
+    txs = await adapter.get_transactions()
+    assert len(txs) >= 1
+    fill = next(tx for tx in txs if tx.client_order_id == order.client_order_id)
+    # ORDER_FILL carries the opened trade ONLY in trade_opened_id — a faithful
+    # venue never sets a top-level trade id on fills (BE-052 relies on this).
+    assert fill.trade_opened_id
+    assert fill.trades_closed == ()
+
+
+async def test_get_transactions_bootstrap_advances_without_activity(
+    rig: tuple[BrokerAdapter, Any],
+) -> None:
+    adapter, _ = rig
+    await adapter.connect()
+    assert adapter.last_transaction_id  # seeded at connect
+    txs = await adapter.get_transactions()
+    assert txs == []  # nothing happened since connect
+    assert adapter.last_transaction_id  # high-water survives an empty poll
+
+
+async def test_full_close_reports_trades_closed(rig: tuple[BrokerAdapter, Any]) -> None:
+    adapter, _ = rig
+    await adapter.connect()
+    placed = await adapter.place_order(_order())
+    assert placed.broker_trade_id
+    since = adapter.last_transaction_id
+    await adapter.close_order(placed.broker_trade_id)
+    txs = await adapter.get_transactions(since)
+    close_fills = [tx for tx in txs if tx.trades_closed]
+    assert len(close_fills) == 1
+    (tc,) = close_fills[0].trades_closed
+    assert tc.trade_id == placed.broker_trade_id
+    assert tc.units == pytest.approx(10_000)
+    assert close_fills[0].trade_reduced is None
+
+
+async def test_partial_close_reports_trade_reduced_and_stays_open(
+    rig: tuple[BrokerAdapter, Any],
+) -> None:
+    adapter, _ = rig
+    await adapter.connect()
+    placed = await adapter.place_order(_order())
+    assert placed.broker_trade_id
+    since = adapter.last_transaction_id
+    result = await adapter.close_order(placed.broker_trade_id, 4_000)
+    assert result.status == "filled"
+    txs = await adapter.get_transactions(since)
+    reduced = [tx for tx in txs if tx.trade_reduced]
+    assert len(reduced) == 1
+    assert reduced[0].trade_reduced is not None
+    assert reduced[0].trade_reduced.trade_id == placed.broker_trade_id
+    assert reduced[0].trade_reduced.units == pytest.approx(4_000)
+    assert reduced[0].trades_closed == ()
+    # Trade must remain open at the venue with the remaining units.
+    positions = [p for p in await adapter.get_positions() if p.instrument == "EUR_USD"]
+    assert len(positions) == 1
+    assert positions[0].units == pytest.approx(6_000)
+    assert placed.broker_trade_id in positions[0].broker_trade_ids

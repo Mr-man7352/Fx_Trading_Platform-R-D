@@ -3,9 +3,12 @@
  * `buildApp` holds all wiring; this file only loads env, listens, and
  * guarantees graceful shutdown within 30 s of SIGTERM/SIGINT.
  */
+
+import { Redis } from 'ioredis';
 import { buildApp } from './app.js';
 import { createPrismaClient } from './db.js';
 import { loadEnv } from './env.js';
+import { startWsBridge } from './ws-bridge.js';
 
 const SHUTDOWN_TIMEOUT_MS = 30_000;
 
@@ -13,6 +16,13 @@ const env = loadEnv();
 // BE-130 — real boot always uses the DB audit sink. Connection is lazy, so a
 // down DB doesn't block boot; the first query surfaces the failure loudly.
 const app = await buildApp(env, { prisma: createPrismaClient(env) });
+
+const wsRedis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+const stopWsBridge = startWsBridge(wsRedis, app.eventBus);
+app.addHook('onClose', async () => {
+  stopWsBridge();
+  wsRedis.disconnect();
+});
 
 await app.listen({ port: env.API_PORT, host: '0.0.0.0' });
 app.log.info(

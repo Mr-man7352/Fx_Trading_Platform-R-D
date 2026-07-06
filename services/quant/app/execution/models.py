@@ -91,3 +91,52 @@ class BrokerTradeRecord(BaseModel):
     realized_pl: float = 0.0
     opened_at: datetime
     closed_at: datetime | None = None
+
+
+class TradeReduceInfo(BaseModel):
+    """Per-trade close/reduce detail inside an ORDER_FILL transaction.
+
+    Mirrors OANDA's TradeReduce: entries in `trades_closed` are trades FULLY
+    closed by the fill; `trade_reduced` is a trade PARTIALLY closed. The
+    reconciler (BE-052) must use these — real ORDER_FILL transactions carry
+    trade ids only here, never at the top level.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    trade_id: str
+    units: float  # absolute units closed/reduced
+    price: float | None = None
+    realized_pl: float = 0.0
+    financing: float = 0.0
+
+
+class BrokerTransaction(BaseModel):
+    """Account transaction for reconciler sync (get_transactions)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    type: str
+    reason: str = ""  # ORDER_FILL reason: MARKET_ORDER, STOP_LOSS_ORDER, …
+    instrument: str = ""
+    trade_id: str | None = None  # top-level tradeID (SL/TP order txns — NOT fills)
+    units: float | None = None
+    price: float | None = None
+    pl: float | None = None
+    financing: float | None = None
+    commission: float | None = None
+    client_order_id: str = ""
+    trade_opened_id: str | None = None  # ORDER_FILL tradeOpened.tradeID
+    trades_closed: tuple[TradeReduceInfo, ...] = ()  # trades fully closed by this fill
+    trade_reduced: TradeReduceInfo | None = None  # trade partially closed by this fill
+    time: datetime
+
+
+class ModifyTradeResult(BaseModel):
+    """Outcome of amending SL/TP on an open trade."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["filled", "rejected"]
+    reason: str | None = None

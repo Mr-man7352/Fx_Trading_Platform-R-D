@@ -186,3 +186,256 @@ class QuantService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class ExecutionServiceStub:
+    """─── BE-050…052 — ExecutionService (Step 2.2) ───────────────────────────────
+    Node orchestrates; Python owns broker I/O via the QN-030 adapter seam.
+
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.PlaceOrder = channel.unary_unary(
+                '/fx.quant.v1.ExecutionService/PlaceOrder',
+                request_serializer=quant__pb2.PlaceOrderRequest.SerializeToString,
+                response_deserializer=quant__pb2.PlaceOrderResponse.FromString,
+                _registered_method=True)
+        self.CloseTrade = channel.unary_unary(
+                '/fx.quant.v1.ExecutionService/CloseTrade',
+                request_serializer=quant__pb2.CloseTradeRequest.SerializeToString,
+                response_deserializer=quant__pb2.CloseTradeResponse.FromString,
+                _registered_method=True)
+        self.ModifyTrade = channel.unary_unary(
+                '/fx.quant.v1.ExecutionService/ModifyTrade',
+                request_serializer=quant__pb2.ModifyTradeRequest.SerializeToString,
+                response_deserializer=quant__pb2.ModifyTradeResponse.FromString,
+                _registered_method=True)
+        self.ListOpenPositions = channel.unary_unary(
+                '/fx.quant.v1.ExecutionService/ListOpenPositions',
+                request_serializer=quant__pb2.ListOpenPositionsRequest.SerializeToString,
+                response_deserializer=quant__pb2.ListOpenPositionsResponse.FromString,
+                _registered_method=True)
+        self.GetTransactions = channel.unary_unary(
+                '/fx.quant.v1.ExecutionService/GetTransactions',
+                request_serializer=quant__pb2.GetTransactionsRequest.SerializeToString,
+                response_deserializer=quant__pb2.GetTransactionsResponse.FromString,
+                _registered_method=True)
+
+
+class ExecutionServiceServicer:
+    """─── BE-050…052 — ExecutionService (Step 2.2) ───────────────────────────────
+    Node orchestrates; Python owns broker I/O via the QN-030 adapter seam.
+
+    """
+
+    def PlaceOrder(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CloseTrade(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ModifyTrade(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListOpenPositions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTransactions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ExecutionServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'PlaceOrder': grpc.unary_unary_rpc_method_handler(
+                    servicer.PlaceOrder,
+                    request_deserializer=quant__pb2.PlaceOrderRequest.FromString,
+                    response_serializer=quant__pb2.PlaceOrderResponse.SerializeToString,
+            ),
+            'CloseTrade': grpc.unary_unary_rpc_method_handler(
+                    servicer.CloseTrade,
+                    request_deserializer=quant__pb2.CloseTradeRequest.FromString,
+                    response_serializer=quant__pb2.CloseTradeResponse.SerializeToString,
+            ),
+            'ModifyTrade': grpc.unary_unary_rpc_method_handler(
+                    servicer.ModifyTrade,
+                    request_deserializer=quant__pb2.ModifyTradeRequest.FromString,
+                    response_serializer=quant__pb2.ModifyTradeResponse.SerializeToString,
+            ),
+            'ListOpenPositions': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListOpenPositions,
+                    request_deserializer=quant__pb2.ListOpenPositionsRequest.FromString,
+                    response_serializer=quant__pb2.ListOpenPositionsResponse.SerializeToString,
+            ),
+            'GetTransactions': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTransactions,
+                    request_deserializer=quant__pb2.GetTransactionsRequest.FromString,
+                    response_serializer=quant__pb2.GetTransactionsResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'fx.quant.v1.ExecutionService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('fx.quant.v1.ExecutionService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ExecutionService:
+    """─── BE-050…052 — ExecutionService (Step 2.2) ───────────────────────────────
+    Node orchestrates; Python owns broker I/O via the QN-030 adapter seam.
+
+    """
+
+    @staticmethod
+    def PlaceOrder(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fx.quant.v1.ExecutionService/PlaceOrder',
+            quant__pb2.PlaceOrderRequest.SerializeToString,
+            quant__pb2.PlaceOrderResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CloseTrade(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fx.quant.v1.ExecutionService/CloseTrade',
+            quant__pb2.CloseTradeRequest.SerializeToString,
+            quant__pb2.CloseTradeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ModifyTrade(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fx.quant.v1.ExecutionService/ModifyTrade',
+            quant__pb2.ModifyTradeRequest.SerializeToString,
+            quant__pb2.ModifyTradeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListOpenPositions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fx.quant.v1.ExecutionService/ListOpenPositions',
+            quant__pb2.ListOpenPositionsRequest.SerializeToString,
+            quant__pb2.ListOpenPositionsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTransactions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fx.quant.v1.ExecutionService/GetTransactions',
+            quant__pb2.GetTransactionsRequest.SerializeToString,
+            quant__pb2.GetTransactionsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

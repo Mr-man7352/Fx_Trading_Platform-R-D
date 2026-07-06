@@ -53,6 +53,8 @@ class FakeOanda:
     def __post_init__(self) -> None:
         self._trades: dict[str, _Trade] = {}
         self._orders: dict[str, dict[str, Any]] = {}  # client_id → fill tx
+        self._transactions: list[dict[str, Any]] = []
+        self._stop_loss: dict[str, float] = {}
         self._next = 1000
         self.order_posts = 0  # observability for idempotency assertions
 
@@ -81,19 +83,30 @@ class FakeOanda:
             return httpx.Response(
                 200,
                 json={
-                    "account": {"currency": self.currency, "marginRate": str(self.margin_rate)}
+                    "account": {"currency": self.currency, "marginRate": str(self.margin_rate)},
+                    # Real OANDA carries this top-level; adapters bootstrap the
+                    # BE-052 since-id from it at connect().
+                    "lastTransactionID": str(self._next),
                 },
             )
         if path == f"{base}/orders" and request.method == "POST":
             return self._place(json.loads(request.content))
         if path.startswith(f"{base}/orders/@"):
             return self._order_by_client_id(path.rsplit("@", 1)[1])
+        if path == f"{base}/transactions/sinceid":
+            return self._transactions_list(request)
+        if path == f"{base}/transactions":
+            # Real OANDA: the plain endpoint returns PAGE URLS, not bodies —
+            # keep the fake faithful so adapters can't lean on it by accident.
+            return httpx.Response(200, json={"pages": [], "count": len(self._transactions)})
         if path.startswith(f"{base}/transactions/"):
             return self._transaction(path.rsplit("/", 1)[1])
         if path == f"{base}/openPositions":
             return self._open_positions()
         if path.startswith(f"{base}/trades/") and path.endswith("/close"):
             return self._close(path.split("/")[-2], json.loads(request.content))
+        if path.startswith(f"{base}/trades/") and path.endswith("/orders"):
+            return self._modify(path.split("/")[-2], json.loads(request.content))
         if path == f"{base}/trades":
             return self._closed_trades()
         return httpx.Response(404, json={"errorMessage": f"no route {path}"})
@@ -123,15 +136,25 @@ class FakeOanda:
         price = PRICES[instrument]
         trade_id = self._next_id()
         self._trades[trade_id] = _Trade(trade_id, instrument, filled, price)
+        # Faithful ORDER_FILL shape: trade id lives ONLY in tradeOpened, client
+        # id in top-level clientOrderID — never a top-level tradeID.
         fill_tx = {
             "id": self._next_id(),
+            "type": "ORDER_FILL",
+            "reason": "MARKET_ORDER",
             "orderID": self._next_id(),
+            "clientOrderID": client_id,
             "instrument": instrument,
             "units": str(filled),
             "price": str(price),
-            "tradeOpened": {"tradeID": trade_id, "units": str(filled)},
+            "pl": "0.0",
+            "financing": "0.0",
+            "commission": "0.0",
+            "tradeOpened": {"tradeID": trade_id, "units": str(filled), "price": str(price)},
+            "time": "2026-07-06T08:00:01.000000000Z",
         }
         self._orders[client_id] = fill_tx
+        self._transactions.append(fill_tx)
         return httpx.Response(201, json={"orderFillTransaction": fill_tx})
 
     def _order_by_client_id(self, client_id: str) -> httpx.Response:
@@ -171,20 +194,62 @@ class FakeOanda:
             return httpx.Response(
                 404, json={"orderRejectTransaction": {"rejectReason": "TRADE_DOESNT_EXIST"}}
             )
-        units = trade.units if body.get("units") == "ALL" else float(body["units"])
+        requested = abs(trade.units) if body.get("units") == "ALL" else abs(float(body["units"]))
+        units = min(requested, abs(trade.units))
         price = PRICES[trade.instrument]
-        trade.close_time = "2026-07-06T09:00:00.000000000Z"
-        trade.close_price = price
-        trade.realized_pl = round((price - trade.price) * units, 6)
+        pl = round((price - trade.price) * (units if trade.units > 0 else -units), 6)
+        full_close = units >= abs(trade.units)
+        reduce_info = {
+            "tradeID": trade_id,
+            "units": str(-units if trade.units > 0 else units),
+            "price": str(price),
+            "realizedPL": str(pl),
+            "financing": "0.0",
+        }
+        # Faithful ORDER_FILL: full close → entry in tradesClosed; partial
+        # close → tradeReduced, trade STAYS OPEN with reduced units.
         fill = {
             "id": self._next_id(),
+            "type": "ORDER_FILL",
+            "reason": "MARKET_ORDER_TRADE_CLOSE",
             "orderID": self._next_id(),
             "instrument": trade.instrument,
-            "units": str(-units),
+            "units": str(-units if trade.units > 0 else units),
             "price": str(price),
-            "tradesClosed": [{"tradeID": trade_id, "units": str(-units)}],
+            "pl": str(pl),
+            "financing": "0.0",
+            "commission": "0.0",
+            "time": "2026-07-06T09:00:01.000000000Z",
         }
+        if full_close:
+            trade.close_time = "2026-07-06T09:00:00.000000000Z"
+            trade.close_price = price
+            trade.realized_pl += pl
+            fill["tradesClosed"] = [reduce_info]
+        else:
+            trade.units = trade.units + units if trade.units < 0 else trade.units - units
+            trade.realized_pl += pl
+            fill["tradeReduced"] = reduce_info
+        self._transactions.append(fill)
         return httpx.Response(200, json={"orderFillTransaction": fill})
+
+    def _modify(self, trade_id: str, body: dict[str, Any]) -> httpx.Response:
+        trade = self._trades.get(trade_id)
+        if trade is None or trade.close_time is not None:
+            return httpx.Response(
+                400, json={"orderRejectTransaction": {"rejectReason": "TRADE_DOESNT_EXIST"}}
+            )
+        if sl := body.get("stopLoss"):
+            self._stop_loss[trade_id] = float(sl["price"])
+        return httpx.Response(200, json={"stopLossOrderTransaction": {"id": self._next_id()}})
+
+    def _transactions_list(self, request: httpx.Request) -> httpx.Response:
+        since = request.url.params.get("id")
+        txs = self._transactions
+        if since:
+            txs = [t for t in txs if int(t["id"]) > int(since)]
+        last = txs[-1]["id"] if txs else (since or "")
+        return httpx.Response(200, json={"transactions": txs, "lastTransactionID": last})
 
     def _closed_trades(self) -> httpx.Response:
         closed = [

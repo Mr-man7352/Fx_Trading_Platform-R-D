@@ -124,6 +124,38 @@ services:
       redis:
         condition: service_healthy
 
+  worker-execution:
+    # BE-050/051/052 — execution worker process: `execution` queue, 30s trade
+    # manager, 60s reconciler, notifications. Same image as `api`; only the
+    # command differs (dist/workers/execution-main.js is built alongside the
+    # server — see apis/node-api build script). Talks to quant gRPC in-network.
+    build:
+      context: ..
+      dockerfile: apis/node-api/Dockerfile
+    command: ["node", "dist/workers/execution-main.js"]
+    environment:
+      NODE_ENV: production
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GIT_COMMIT: ${GIT_COMMIT:-local}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-ZGV2LW9ubHktY3JlZGVudGlhbHMta2V5LTMyYnl0ZXM=}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
+      REDIS_URL: redis://redis:6379
+      QUANT_GRPC_URL: quant:50051
+      RECONCILE_ACTION: ${RECONCILE_ACTION:-halt}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # BE-140 — empty ⇒ tracing off. In-network Tempo (observability profile).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      quant:
+        condition: service_started
+
   # QN-020 — OANDA price stream → `market-ticks`. Opt-in (needs OANDA creds):
   #   docker compose -f infra/docker-compose.local.yml --profile ingest up -d quant-stream
   quant-stream:

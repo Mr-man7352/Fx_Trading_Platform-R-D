@@ -16,29 +16,32 @@ quant pipeline emits calibrated, sized candidates; baseline logging P&L.
 
 ---
 
-## Current state (updated 2026-07-06)
+## Current state (updated 2026-07-07)
 
-- **Done (Phase 2):** Step 2.1 code-complete — QN-030 (BrokerAdapter protocol +
-  conformance suite), QN-032 (OANDA v20 execution adapter), QN-033 (symbol
-  table), QN-034 (pip/lot/margin). **QN-031 (MT5) DROPPED by product decision
-  2026-07-06** — OANDA v20 covers both data and execution; stories/PRD updated.
-- **Done (Phase-1 cross-cutting):** BE-140 (OTel traces Node+Python → Tempo),
-  BE-141 (Grafana dashboards + provisioned alert rules + `/metrics` endpoint),
-  BE-142 (restic backup/restore-drill scripts + runbook).
-- **Pending human actions (build/tooling — sandbox can't run these):**
-  1. `pnpm install` (new deps: @opentelemetry/*, @prisma/instrumentation,
-     bullmq-otel — version ranges are best-guess, bump if resolution fails)
-  2. `pnpm --filter @fx/types build` then in `services/quant`:
-     `uv run python scripts/gen_contracts.py` (new broker.ts contracts →
-     regenerate `app/contracts/`, else CI drift check fails)
-  3. in `services/quant`: `uv lock && uv sync` (new deps: cryptography,
-     opentelemetry-*) then `uv run pytest` (execution suite verified on 3.10
-     shim in sandbox — see entry; re-verify on 3.13)
-  4. `pnpm test` / `pnpm typecheck` / `pnpm lint` at root
-  5. carried over from Phase 1: `/dashboard` visual check; `git push
-     --force-with-lease` after the 2026-07-05 history rewrite
-- **Next:** Step 2.2 — order lifecycle & reconciliation (BE-050…054), then
-  Step 2.3 — deterministic quant core (QN-040…048).
+- **Done (Phase 2):** Step 2.1 (QN-030…034) + **Step 2.2** (BE-050…053): execution
+  worker + order lifecycle, trade manager (+1R partial/breakeven/trail), 60s
+  reconciler, off-host watchdog. ExecutionService gRPC seam (Python → OANDA adapter,
+  Node `quant-client.ts`). BE-054 (trades REST) deferred to Phase 5.
+  **2026-07-07 audit + fix pass applied on top** (see entry): reconciler txn
+  mapping rebuilt on tradesClosed/tradeReduced, since-id bootstrap fixed,
+  watchdog de-zodded + degraded-alerting + re-arm, adapter caching, compose/stack
+  worker services, real worker test suites.
+- **Done (Phase-1 cross-cutting):** BE-140/141/142 (OTel, Grafana, backups).
+- **Pending human actions:**
+  1. **Prisma migration** — schema adds `trade_intents.reason_code`, `intent_status.executed`.
+     Local DB has migration drift (timescale indexes); run:
+     `pnpm --filter @fx/node-api exec prisma migrate reset` then
+     `pnpm --filter @fx/node-api exec prisma migrate dev --name step_2_2_order_lifecycle`
+     (dev-only; destructive).
+  2. `pnpm test` / `pnpm typecheck` / `pnpm lint` at root — the 2026-07-07 fix
+     pass typechecked everything in the sandbox but could NOT execute Vitest
+     there; `cd services/quant && uv run pytest` to re-verify 101/101 on 3.13.
+  3. Paper round-trip smoke against real OANDA practice account (or FakeOanda path
+     documented below — NOT verified against live OANDA in this session).
+  4. Deploy watchdog off-host per `workers/watchdog/README.md`.
+  5. Carried over: `/dashboard` visual check; `git push --force-with-lease` after
+     2026-07-05 history rewrite.
+- **Next:** Step 2.3 — deterministic quant core (QN-040…048).
 
 ## Standing decisions (carried from Phase 1 — don't re-litigate without cause)
 
@@ -191,6 +194,94 @@ quant pipeline emits calibrated, sized candidates; baseline logging P&L.
   `datetime.UTC` shim (sandbox has no 3.13; only stdlib-level difference).
   NOT verified: pytest on 3.13, mypy/ruff, contracts regen, a real
   practice-account round-trip (needs OANDA creds — recommend before Step 2.2).
+
+### 2026-07-06 — Step 2.2: Order lifecycle & reconciliation (BE-050, BE-051, BE-052, BE-053)
+
+- **Execution seam:** `ExecutionService` in `services/quant/proto/quant.proto` +
+  `app/grpc/execution_servicer.py` (delegates to QN-030 adapter via
+  `app/execution/factory.py`). Adapter extended: `modify_trade`, `get_transactions`.
+  Node: `apis/node-api/src/execution/quant-client.ts` (@grpc/grpc-js, 10s/5s timeouts).
+- **BE-050:** `workers/execution.ts` + `execution-main.ts` (BullMQ `execution` queue),
+  halt flag (`execution:halt`), notifications worker, `scripts/enqueue-intent.ts`,
+  WS fan-out via Redis (`ws:fanout` → `ws-bridge.ts`), audit rows, `supervision` producer.
+  Schema: `trade_intents.reason_code`, `intent_status.executed`.
+- **BE-051:** `trade-manager.ts` (30s repeatable), `manager-config.ts` (+1R partial,
+  breakeven, trail; never-widen-SL unit-tested).
+- **BE-052:** `reconciler.ts` (60s), txn high-water in Redis, mismatch → halt/flatten,
+  `fx_reconciliation_mismatches_total` metric, integration-style Vitest for mismatch detect.
+- **BE-053:** `workers/watchdog/` — fate-isolated PAT flatten, Telegram/SMS, Dockerfile +
+  README (off-host deploy runbook), `GET /healthz/heartbeat` on node-api.
+- Verified: **61/61** pytest (execution + servicer unit tests), **74/74** node-api
+  Vitest, **3/3** watchdog Vitest, `tsc --noEmit` clean. NOT verified: prisma
+  migrate (DB drift — needs operator reset), live OANDA paper round-trip.
+- Paper smoke (FakeOanda / stub path): start quant + `pnpm --filter @fx/node-api
+  worker:execution`, then `pnpm --filter @fx/node-api enqueue-intent -- EUR_USD long
+  10000 1.10 1.09 1.12` — expects fill row + supervision job enqueued.
+
+### 2026-07-07 — Step 2.2 audit + fix pass (BE-050…053)
+
+Audit of the Step-2.2 build found three blocking bugs (all rooted in FakeOanda
+being unfaithful to the real v20 API, so the suites passed while the code was
+broken against the real venue) plus coverage/robustness gaps. All fixed:
+
+- **Reconciler close-sync rebuilt on `tradesClosed`/`tradeReduced` (blocking).**
+  Real ORDER_FILL transactions carry trade ids only in `tradeOpened` /
+  `tradesClosed` / `tradeReduced` — never top-level `tradeID`. The old code
+  keyed close-sync on top-level tradeID: vs real OANDA every SL/TP hit became a
+  `missing_at_broker` halt; vs the (wrong) fake it closed freshly-OPENED trades.
+  Now: proto `TradeReduceMsg` + `reason`/`trade_opened_id`/`trades_closed`/
+  `trade_reduced` on `BrokerTransactionMsg` (proto_gen regenerated with pinned
+  grpcio-tools 1.81.1); Python `TradeReduceInfo` model; reconciler closes DB
+  trades only from `tradesClosed` (P&L/financing per-trade, commission
+  apportioned by units), accumulates partial-close P&L from `tradeReduced`
+  WITHOUT touching units (manager owns units; broker-initiated partials surface
+  via size_drift). This also fixes "partial-close P&L never recorded".
+- **since-id bootstrap (blocking).** Plain `GET /transactions` returns PAGE
+  URLS, not bodies — first-ever reconcile got `[]` and the high-water mark
+  never advanced (txn sync no-oped forever). Adapter now records
+  `lastTransactionID` at `connect()`, `get_transactions` ALWAYS uses
+  `/transactions/sinceid` (bootstraps from connect when no since-id), servicer
+  returns the adapter's high-water mark even on empty polls, reconciler
+  persists it every tick.
+- **Watchdog de-zodded (blocking).** `workers/watchdog` imported zod without
+  declaring it — monorepo hoisting hid it; the isolated Docker build would
+  fail. Env parsing is now hand-rolled; the package is genuinely
+  dependency-free (documented in its README). Also: heartbeat `degraded`
+  (execution worker silent >120s) now alerts once via Telegram/SMS (still no
+  flatten — broker-side SL/TP stand; flatten stays reserved for full host
+  loss), and the trigger re-arms after recovery so a second outage still
+  flattens. Core extracted to `src/watchdog.ts` (injectable deps) for tests.
+- **FakeOanda made faithful:** ORDER_FILL shape (tradeOpened/tradesClosed/
+  tradeReduced, top-level `clientOrderID`, reason), partial closes keep the
+  trade open with reduced units, `/transactions` returns pages (like the real
+  API), `/transactions/sinceid` routed correctly (was 404 before —
+  another latent bug), summary carries `lastTransactionID`.
+- **Adapter caching:** `load_adapter()` cached for process lifetime
+  (was: fresh asyncpg conn + OANDA connect per RPC, 4+/min from the
+  reconciler+manager alone); `reset_adapter_cache()` on BrokerError.
+- **Trade manager:** rejected breakeven modify now retried each tick until it
+  sticks (was: silently never set, trailing never activated). Fill handler no
+  longer derives risk from a missing fill price (falls back to intent entry;
+  omits `originalRiskDistance` if unknown so the manager skips the trade).
+- **Deploy:** `worker-execution` service added to compose AND
+  `infra/docker-stack.yml` (the stack also gained the missing market-data
+  `worker` service — it was compose-only; prod would have run neither worker).
+- **Tests added:** Node — `execution-worker.test.ts` (fill/idempotent retry/
+  halt/reject/partial/unknown-outcome), reconciler tick suites (bootstrap,
+  SL-close sync, partial accumulate, lost-fill recovery, halt +
+  flatten_and_halt ACs, clean-state), trade-manager tick suites (+1R once,
+  breakeven retry, trail never-widens, halt/backtest no-op) over shared
+  in-memory fakes (`test-fakes.ts`); watchdog trigger-timing/re-arm/
+  retry-until-flat/degraded + env-parsing tests. Python — conformance additions
+  (bootstrap advances on empty polls, full-close→trades_closed,
+  partial→trade_reduced + position stays open with reduced units).
+- Verified: **101/101 quant pytest in sandbox** (py3.10 + UTC shim venv;
+  the 1 failure without proxy-env stripped is a sandbox SOCKS artifact),
+  `tsc --noEmit` clean for @fx/node-api and @fx/watchdog (fixed watchdog
+  tsconfig rootDir clash), proto_gen regenerated via the real
+  `scripts/gen_proto.py`. NOT verified: Vitest execution (darwin natives —
+  run `pnpm test` on the Mac), pytest on 3.13, biome, prisma migrate, real
+  OANDA round-trip.
 
 ---
 

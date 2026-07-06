@@ -1,0 +1,22 @@
+{
+  "name": "@fx/watchdog",
+  "version": "0.0.1",
+  "private": true,
+  "description": "BE-053 — off-host dead-man's switch (ADR-013). Fate-isolated; no @fx/* imports.",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsup src/index.ts src/health.ts --format esm --clean",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.5",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.9"
+  }
+}

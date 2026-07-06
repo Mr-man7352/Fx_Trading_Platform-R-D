@@ -82,6 +82,36 @@ services:
     networks: [backend]
     deploy: *zero_downtime
 
+  worker:
+    # BE-040 — market-data worker (same image as api, different entrypoint).
+    image: ${REGISTRY}/fx-node-api:${TAG}
+    command: ["node", "dist/workers/main.js"]
+    environment: &worker_env
+      NODE_ENV: production
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GIT_COMMIT: ${TAG}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?set CREDENTIALS_ENCRYPTION_KEY}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+    networks: [backend]
+    deploy: *zero_downtime
+
+  worker-execution:
+    # BE-050/051/052 — execution worker: `execution` queue, 30s trade manager,
+    # 60s reconciler, notifications. Quant gRPC over the backend network.
+    image: ${REGISTRY}/fx-node-api:${TAG}
+    command: ["node", "dist/workers/execution-main.js"]
+    environment:
+      <<: *worker_env
+      QUANT_GRPC_URL: quant:50051
+      RECONCILE_ACTION: ${RECONCILE_ACTION:-halt}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    networks: [backend]
+    deploy: *zero_downtime
+
   redis:
     image: redis:8-alpine
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]

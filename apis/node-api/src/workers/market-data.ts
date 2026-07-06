@@ -52,7 +52,8 @@ export function startMarketDataWorker(env: Env): MarketDataWorkerHandle {
     await signals.add(
       'h1-close',
       { instrument: t.instrument, timeframe: t.timeframe, barTs: t.barTs.toISOString() },
-      { jobId: `${t.instrument}:${t.timeframe}:${t.barTs.toISOString()}` }, // idempotent
+      // idempotent; BullMQ 5 forbids ':' in custom ids (ISO timestamps carry them)
+      { jobId: `${t.instrument}-${t.timeframe}-${t.barTs.getTime()}` },
     );
   });
 

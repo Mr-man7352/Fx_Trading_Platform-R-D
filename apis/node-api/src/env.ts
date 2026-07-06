@@ -71,6 +71,20 @@ const EnvSchema = z.object({
   CREDENTIALS_ENCRYPTION_KEY: z
     .string()
     .refine((v) => Buffer.from(v, 'base64').length === 32, 'Expected base64 of exactly 32 bytes'),
+  /** BE-050 — quant gRPC address for ExecutionService (QN-030 bridge). */
+  QUANT_GRPC_URL: z.string().default('localhost:50051'),
+  QUANT_GRPC_WRITE_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  QUANT_GRPC_READ_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+  /** BE-052 — mismatch action: halt (default) or flatten_and_halt. */
+  RECONCILE_ACTION: z.enum(['halt', 'flatten_and_halt']).default('halt'),
+  /** BE-051 — trade manager overrides. */
+  TRADE_MANAGER_PARTIAL_TRIGGER_R: z.coerce.number().positive().default(1),
+  TRADE_MANAGER_PARTIAL_FRACTION: z.coerce.number().gt(0).lte(1).default(0.5),
+  TRADE_MANAGER_BREAKEVEN_BUFFER_R: z.coerce.number().nonnegative().default(0.05),
+  TRADE_MANAGER_TRAIL_DISTANCE_R: z.coerce.number().positive().default(0.5),
+  /** BE-050 — optional Telegram alerts (no-op when unset). */
+  TELEGRAM_BOT_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  TELEGRAM_CHAT_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

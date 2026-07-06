@@ -1,7 +1,14 @@
 import { Queue } from 'bullmq';
 import type { FastifyInstance } from 'fastify';
 import { Redis } from 'ioredis';
-import { MARKET_TICKS_QUEUE, SIGNALS_QUEUE } from '../workers/queues.js';
+import { RECONCILE_MISMATCH_METRIC_KEY } from '../execution/halt.js';
+import {
+  EXECUTION_QUEUE,
+  MARKET_TICKS_QUEUE,
+  RECONCILIATION_QUEUE,
+  SIGNALS_QUEUE,
+  TRADE_MANAGER_QUEUE,
+} from '../workers/queues.js';
 
 /**
  * BE-141 — `GET /metrics`: Prometheus text exposition, hand-rolled (no
@@ -55,7 +62,14 @@ export function registerMetricsRoutes(app: FastifyInstance): void {
         '# TYPE fx_queue_jobs gauge',
       ];
       let up = 1;
-      for (const name of [SIGNALS_QUEUE, MARKET_TICKS_QUEUE]) {
+      let reconciliationMismatches = 0;
+      for (const name of [
+        SIGNALS_QUEUE,
+        MARKET_TICKS_QUEUE,
+        EXECUTION_QUEUE,
+        RECONCILIATION_QUEUE,
+        TRADE_MANAGER_QUEUE,
+      ]) {
         try {
           const c = await getQueue(name).getJobCounts('waiting', 'active', 'delayed', 'failed');
           for (const [state, count] of Object.entries(c)) {
@@ -65,10 +79,19 @@ export function registerMetricsRoutes(app: FastifyInstance): void {
           up = 0; // Redis unreachable — report scrape degradation, not a 500
         }
       }
+      try {
+        const n = await redis?.get(RECONCILE_MISMATCH_METRIC_KEY);
+        reconciliationMismatches = n ? Number(n) : 0;
+      } catch {
+        up = 0;
+      }
       lines.push(
         '# HELP fx_metrics_up 1 when all metric sources answered this scrape.',
         '# TYPE fx_metrics_up gauge',
         `fx_metrics_up ${up}`,
+        '# HELP fx_reconciliation_mismatches_total Reconciliation mismatches (BE-052).',
+        '# TYPE fx_reconciliation_mismatches_total counter',
+        `fx_reconciliation_mismatches_total ${reconciliationMismatches}`,
       );
       reply.header('content-type', 'text/plain; version=0.0.4; charset=utf-8');
       return `${lines.join('\n')}\n`;

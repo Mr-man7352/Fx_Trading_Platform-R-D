@@ -250,6 +250,7 @@ enum IntentStatus {
   approved
   rejected
   submitted
+  executed
   cancelled
 
   @@map("intent_status")
@@ -268,6 +269,8 @@ model TradeIntent {
   riskPct     Float        @map("risk_pct")
   riskGate    Json         @map("risk_gate")
   status      IntentStatus @default(pending)
+  /// BE-050 — broker reject / halt reason (INSUFFICIENT_MARGIN, MARKET_HALTED, halted, …).
+  reasonCode  String?      @map("reason_code")
   tradingMode TradingMode  @map("trading_mode")
   createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   decidedAt   DateTime?    @map("decided_at") @db.Timestamptz(6)

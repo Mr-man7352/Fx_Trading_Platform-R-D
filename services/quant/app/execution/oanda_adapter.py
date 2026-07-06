@@ -26,9 +26,12 @@ from app.execution.adapter import BrokerError
 from app.execution.models import (
     BrokerPosition,
     BrokerTradeRecord,
+    BrokerTransaction,
+    ModifyTradeResult,
     OrderRequest,
     OrderResult,
     OrderSide,
+    TradeReduceInfo,
 )
 from app.execution.symbols import from_broker_symbol, to_broker_symbol
 from app.market.oanda_client import _parse_time
@@ -70,6 +73,10 @@ class OandaAdapter:
         # Populated by connect(); consumed by QN-034 sizing callers.
         self.account_currency: str | None = None
         self.margin_rate: float | None = None
+        # High-water transaction id, seeded at connect() (BE-052 bootstrap:
+        # the plain /transactions endpoint returns PAGES, not transactions —
+        # get_transactions therefore ALWAYS queries /transactions/sinceid).
+        self.last_transaction_id: str | None = None
 
     @classmethod
     def from_credentials(
@@ -84,9 +91,13 @@ class OandaAdapter:
         resp = await self._client.get(f"/v3/accounts/{self._account_id}/summary")
         if resp.status_code != 200:
             raise BrokerError(f"OANDA auth/summary failed: HTTP {resp.status_code}")
-        account = resp.json().get("account", {})
+        payload = resp.json()
+        account = payload.get("account", {})
         self.account_currency = account.get("currency")
         self.margin_rate = _num(account.get("marginRate"), 0.0) or None
+        last = payload.get("lastTransactionID") or account.get("lastTransactionID")
+        if last:
+            self.last_transaction_id = str(last)
 
     async def disconnect(self) -> None:
         await self._client.aclose()
@@ -186,6 +197,53 @@ class OandaAdapter:
             )
         raise BrokerError(f"trade close failed: {reason}")
 
+    async def modify_trade(
+        self,
+        broker_trade_id: str,
+        *,
+        stop_loss_price: float | None = None,
+        take_profit_price: float | None = None,
+    ) -> ModifyTradeResult:
+        body: dict[str, Any] = {}
+        if stop_loss_price is not None:
+            body["stopLoss"] = {"price": f"{stop_loss_price:.10g}"}
+        if take_profit_price is not None:
+            body["takeProfit"] = {"price": f"{take_profit_price:.10g}"}
+        resp = await self._client.put(
+            f"/v3/accounts/{self._account_id}/trades/{broker_trade_id}/orders",
+            json=body,
+        )
+        data = self._json(resp)
+        if resp.status_code == 200:
+            return ModifyTradeResult(status="filled")
+        reason = str(
+            (data.get("orderRejectTransaction") or {}).get("rejectReason")
+            or data.get("errorMessage")
+            or f"HTTP {resp.status_code}"
+        )
+        return ModifyTradeResult(status="rejected", reason=reason)
+
+    async def get_transactions(self, since_txn_id: str | None = None) -> list[BrokerTransaction]:
+        # NEVER hit the plain /transactions endpoint — it returns page URLs,
+        # not transaction bodies. Without an explicit since id, bootstrap from
+        # the high-water mark recorded at connect().
+        since = since_txn_id or self.last_transaction_id
+        if not since:
+            raise BrokerError("get_transactions requires connect() first (no since-id)")
+        resp = await self._client.get(
+            f"/v3/accounts/{self._account_id}/transactions/sinceid",
+            params={"id": since},
+        )
+        if resp.status_code != 200:
+            raise BrokerError(f"transactions failed: HTTP {resp.status_code}")
+        payload = self._json(resp)
+        raw = payload.get("transactions") or []
+        out = [self._tx_from_raw(tx) for tx in raw]
+        out.sort(key=lambda t: t.time)
+        last = payload.get("lastTransactionID")
+        self.last_transaction_id = str(last) if last else (out[-1].id if out else since)
+        return out
+
     async def get_history(self, since: datetime) -> list[BrokerTradeRecord]:
         resp = await self._client.get(
             f"/v3/accounts/{self._account_id}/trades",
@@ -251,6 +309,48 @@ class OandaAdapter:
             broker="oanda",
             requested_units=order.units,
             reason=reason,
+        )
+
+    @staticmethod
+    def _trade_reduce(raw: dict[str, Any]) -> TradeReduceInfo:
+        return TradeReduceInfo(
+            trade_id=str(raw.get("tradeID", "")),
+            units=abs(_num(raw.get("units"))),
+            price=_num(raw.get("price")) or None,
+            realized_pl=_num(raw.get("realizedPL")),
+            financing=_num(raw.get("financing")),
+        )
+
+    def _tx_from_raw(self, tx: dict[str, Any]) -> BrokerTransaction:
+        instrument = str(tx.get("instrument", ""))
+        if instrument:
+            instrument = from_broker_symbol(instrument, "oanda")
+        # ORDER_FILL carries clientOrderID top-level; other txn types use
+        # clientExtensions.id.
+        client_id = str(tx.get("clientOrderID", ""))
+        if not client_id and (ext := tx.get("clientExtensions")):
+            client_id = str(ext.get("id", ""))
+        trade_opened = tx.get("tradeOpened") or {}
+        return BrokerTransaction(
+            id=str(tx["id"]),
+            type=str(tx.get("type", "")),
+            reason=str(tx.get("reason", "")),
+            instrument=instrument,
+            trade_id=str(tx["tradeID"]) if tx.get("tradeID") else None,
+            units=abs(_num(tx["units"])) if tx.get("units") is not None else None,
+            price=_num(tx.get("price")) or None,
+            pl=_num(tx.get("pl")) if tx.get("pl") is not None else None,
+            financing=_num(tx.get("financing")) if tx.get("financing") is not None else None,
+            commission=_num(tx.get("commission")) if tx.get("commission") is not None else None,
+            client_order_id=client_id,
+            trade_opened_id=str(trade_opened["tradeID"]) if trade_opened.get("tradeID") else None,
+            trades_closed=tuple(
+                self._trade_reduce(tc) for tc in (tx.get("tradesClosed") or [])
+            ),
+            trade_reduced=(
+                self._trade_reduce(tx["tradeReduced"]) if tx.get("tradeReduced") else None
+            ),
+            time=_parse_time(str(tx["time"])),
         )
 
     async def _lookup_existing(self, order: OrderRequest) -> OrderResult:
