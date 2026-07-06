@@ -96,7 +96,12 @@ describe('CandleAggregator', () => {
     const agg = new CandleAggregator('EUR_USD', 'M1');
     agg.add(tick('2026-03-10T14:00:30Z', 1.085)); // opens the 14:00 bar
     agg.add(tick('2026-03-10T13:59:50Z', 9.999)); // from a prior bucket → ignored
-    expect(agg.snapshot()).toMatchObject({ ts: '2026-03-10T14:00:00.000Z', high: 1.085, low: 1.085, volume: 1 });
+    expect(agg.snapshot()).toMatchObject({
+      ts: '2026-03-10T14:00:00.000Z',
+      high: 1.085,
+      low: 1.085,
+      volume: 1,
+    });
   });
 
   it('flush force-closes the open bar', () => {

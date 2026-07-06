@@ -32,7 +32,10 @@ export function AppShell({
   ...props
 }: AppShellProps) {
   return (
-    <div className={cn('flex min-h-dvh flex-col bg-background text-foreground', className)} {...props}>
+    <div
+      className={cn('flex min-h-dvh flex-col bg-background text-foreground', className)}
+      {...props}
+    >
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div className="flex h-14 items-center justify-between gap-4 px-4">
           <div className="flex min-w-0 items-center gap-3">{brand}</div>

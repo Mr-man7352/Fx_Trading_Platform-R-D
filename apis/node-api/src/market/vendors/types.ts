@@ -14,7 +14,10 @@ export interface HttpResponse {
   json(): Promise<unknown>;
   text(): Promise<string>;
 }
-export type HttpClient = (url: string, init?: { headers?: Record<string, string> }) => Promise<HttpResponse>;
+export type HttpClient = (
+  url: string,
+  init?: { headers?: Record<string, string> },
+) => Promise<HttpResponse>;
 
 export const defaultHttpClient: HttpClient = (url, init) =>
   fetch(url, init) as unknown as Promise<HttpResponse>;

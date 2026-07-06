@@ -40,11 +40,7 @@
     },
     "tradingMode": {
       "type": "string",
-      "enum": [
-        "backtest",
-        "paper",
-        "live"
-      ]
+      "enum": ["backtest", "paper", "live"]
     }
   },
   "required": [

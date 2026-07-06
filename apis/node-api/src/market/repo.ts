@@ -50,7 +50,8 @@ export function newsDedupeKey(item: {
   headline: string;
   publishedAt: Date;
 }): string {
-  const disambiguator = item.externalId?.trim() || `${item.headline}@${item.publishedAt.toISOString()}`;
+  const disambiguator =
+    item.externalId?.trim() || `${item.headline}@${item.publishedAt.toISOString()}`;
   return `${item.source}::${disambiguator}`;
 }
 
@@ -97,7 +98,12 @@ export class MarketRepo {
         timeframe: params.timeframe,
         ...(params.includeIncomplete ? {} : { complete: true }),
         ...(params.from || params.to
-          ? { ts: { ...(params.from ? { gte: params.from } : {}), ...(params.to ? { lt: params.to } : {}) } }
+          ? {
+              ts: {
+                ...(params.from ? { gte: params.from } : {}),
+                ...(params.to ? { lt: params.to } : {}),
+              },
+            }
           : {}),
       },
       orderBy: { ts: 'asc' },
@@ -202,7 +208,9 @@ export class MarketRepo {
     for (const m of items) {
       const revision = m.revision ?? 0;
       await this.prisma.macroFeature.upsert({
-        where: { series_releaseTs_revision: { series: m.series, releaseTs: m.releaseTs, revision } },
+        where: {
+          series_releaseTs_revision: { series: m.series, releaseTs: m.releaseTs, revision },
+        },
         create: {
           series: m.series,
           releaseTs: m.releaseTs,
@@ -223,7 +231,11 @@ export class MarketRepo {
    * BE-043 — release-time-aware macro read: only values whose `release_ts <=
    * asOf` are visible (COT joins on release, not the reference period).
    */
-  async queryMacro(params: { series: string; asOf?: Date; limit: number }): Promise<MacroFeature[]> {
+  async queryMacro(params: {
+    series: string;
+    asOf?: Date;
+    limit: number;
+  }): Promise<MacroFeature[]> {
     const rows = await this.prisma.macroFeature.findMany({
       where: {
         series: params.series,

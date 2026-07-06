@@ -13,25 +13,18 @@
           },
           "instrument": {
             "type": "string",
-            "pattern": "^[A-Z0-9]{2,4}_[A-Z0-9]{2,4}$"
+            "pattern": "^[A-Z0-9]{2,6}_[A-Z0-9]{2,6}$"
           },
           "side": {
             "type": "string",
-            "enum": [
-              "long",
-              "short"
-            ]
+            "enum": ["long", "short"]
           },
           "units": {
             "type": "number"
           },
           "mode": {
             "type": "string",
-            "enum": [
-              "backtest",
-              "paper",
-              "live"
-            ]
+            "enum": ["backtest", "paper", "live"]
           },
           "openedAt": {
             "type": "string",
@@ -51,21 +44,11 @@
             ]
           }
         },
-        "required": [
-          "id",
-          "instrument",
-          "side",
-          "units",
-          "mode",
-          "openedAt",
-          "closedAt"
-        ],
+        "required": ["id", "instrument", "side", "units", "mode", "openedAt", "closedAt"],
         "additionalProperties": false
       }
     }
   },
-  "required": [
-    "trades"
-  ],
+  "required": ["trades"],
   "additionalProperties": false
 }

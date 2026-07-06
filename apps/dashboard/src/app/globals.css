@@ -1,6 +1,6 @@
 /* FE-010 — Tailwind v4 + @fx/ui design tokens. */
-@import 'tailwindcss';
-@import '@fx/ui/theme.css';
+@import "tailwindcss";
+@import "@fx/ui/theme.css";
 
 /* @fx/ui is consumed as TS source — tell Tailwind to scan it for class names. */
-@source '../../../../packages/ui/src';
+@source "../../../../packages/ui/src";

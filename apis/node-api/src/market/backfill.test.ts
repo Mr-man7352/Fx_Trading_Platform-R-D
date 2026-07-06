@@ -8,7 +8,10 @@ import type { CandleFetchRequest, CandleSource, CrossCheckSource } from './vendo
 /** In-memory CandleSource yielding fixed M1 bars, paged, respecting from/to. */
 class FakeSource implements CandleSource {
   readonly name = 'fake';
-  constructor(private readonly bars: CandleRow[], private readonly pageSize = 2) {}
+  constructor(
+    private readonly bars: CandleRow[],
+    private readonly pageSize = 2,
+  ) {}
   async *fetchCandles(req: CandleFetchRequest): AsyncGenerator<CandleRow[], void, unknown> {
     const inRange = this.bars.filter((b) => b.ts >= req.from && b.ts < req.to);
     for (let i = 0; i < inRange.length; i += this.pageSize) {

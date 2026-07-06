@@ -16,21 +16,29 @@ quant pipeline emits calibrated, sized candidates; baseline logging P&L.
 
 ---
 
-## Current state (updated 2026-07-05)
+## Current state (updated 2026-07-06)
 
-- **Done (Phase 2):** nothing yet — Phase 1 is code-complete (see DEVLOG.md;
-  pending human actions there: `pnpm install`, `uv lock`, test suites, plus the
-  Step-1.7 visual check).
-- **Next:** Step 2.1 — Broker abstraction & execution adapters:
-  - QN-030 — typed `BrokerAdapter` interface
-  - QN-032 — OANDA v20 adapter (primary execution venue, ADR-005)
-  - QN-033 — symbol mapping table (seeded by the BE-045 instrument registry)
-  - QN-034 — cross-currency pip/lot/margin module
-  - QN-031 — MT5 adapter (optional, off critical path; mock conformance in CI)
-- **Then:** Step 2.2 — order lifecycle & reconciliation (BE-050…054), Step 2.3
-  — deterministic quant core (QN-040…048).
-- Cross-cutting still open from Phase 1: BE-140…142 (OTel, dashboards/alerts,
-  restic backups).
+- **Done (Phase 2):** Step 2.1 code-complete — QN-030 (BrokerAdapter protocol +
+  conformance suite), QN-032 (OANDA v20 execution adapter), QN-033 (symbol
+  table), QN-034 (pip/lot/margin). **QN-031 (MT5) DROPPED by product decision
+  2026-07-06** — OANDA v20 covers both data and execution; stories/PRD updated.
+- **Done (Phase-1 cross-cutting):** BE-140 (OTel traces Node+Python → Tempo),
+  BE-141 (Grafana dashboards + provisioned alert rules + `/metrics` endpoint),
+  BE-142 (restic backup/restore-drill scripts + runbook).
+- **Pending human actions (build/tooling — sandbox can't run these):**
+  1. `pnpm install` (new deps: @opentelemetry/*, @prisma/instrumentation,
+     bullmq-otel — version ranges are best-guess, bump if resolution fails)
+  2. `pnpm --filter @fx/types build` then in `services/quant`:
+     `uv run python scripts/gen_contracts.py` (new broker.ts contracts →
+     regenerate `app/contracts/`, else CI drift check fails)
+  3. in `services/quant`: `uv lock && uv sync` (new deps: cryptography,
+     opentelemetry-*) then `uv run pytest` (execution suite verified on 3.10
+     shim in sandbox — see entry; re-verify on 3.13)
+  4. `pnpm test` / `pnpm typecheck` / `pnpm lint` at root
+  5. carried over from Phase 1: `/dashboard` visual check; `git push
+     --force-with-lease` after the 2026-07-05 history rewrite
+- **Next:** Step 2.2 — order lifecycle & reconciliation (BE-050…054), then
+  Step 2.3 — deterministic quant core (QN-040…048).
 
 ## Standing decisions (carried from Phase 1 — don't re-litigate without cause)
 
@@ -113,7 +121,76 @@ quant pipeline emits calibrated, sized candidates; baseline logging P&L.
 
 ## Entries
 
-*(none yet)*
+### 2026-07-06 — Phase-1 cross-cutting: BE-140/141/142 (OTel, dashboards+alerts, backups)
+
+- **BE-142 restic backups:** `infra/backup/backup.sh` (pg_dump -Fc → `restic
+  backup --stdin` → S3-compatible; retention 48h/14d/8w/6m + nightly
+  `restic check --read-data-subset=5%`), `restore-drill.sh` (restores `latest`
+  into a throwaway timescaledb-ha container, verifies hypertables/CAGGs/
+  pgvector, measures RPO/RTO, appends to `drill-log.md`), runbook `BACKUP.md`
+  (cron: nightly full + hourly during FX week ⇒ RPO <1h; weekly Sat drill).
+- **BE-140 OTel:** Node — `apis/node-api/src/otel.ts` (NodeSDK +
+  auto-instrumentations + @prisma/instrumentation; OTLP/HTTP), loaded via
+  `node --import ./dist/otel.js` in the `start*` scripts (ESM patching needs
+  pre-import, NOT an in-module import; dev via tsx runs untraced — acceptable,
+  compose runs dist). BullMQ jobs use BullMQ's native `telemetry` hook
+  (`bullmq-otel`) in `workers/market-data.ts`. Python —
+  `services/quant/app/telemetry.py` (FastAPI + grpc.aio server + httpx),
+  called in the lifespan BEFORE `GrpcServer()` (the instrumentor patches the
+  constructor). Everything no-ops when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset
+  (new optional env key in env.ts/config.py/.env.example/compose).
+- **BE-141 dashboards/alerts:** compose `observability` profile (Tempo 2.7,
+  Prometheus v3, Grafana 12 on :3001) + provisioning under
+  `infra/observability/` (datasources, `fx-operations` dashboard, 6 alert
+  rules with the AC thresholds, Telegram/SMS contact points + severity
+  routing). New public `GET /metrics` on node-api (hand-rolled Prometheus
+  text; live `fx_queue_jobs{queue,state}` from BullMQ) — reserved metric names
+  for Phase-2/3 emitters contracted in `infra/observability/README.md`;
+  rules on not-yet-emitted metrics sit silent in NoData.
+- Verified: bash -n on backup scripts; YAML/JSON parse checks on all configs.
+  Post-install fix: pnpm resolved the OTel 1.x/0.5x line, whose resources API
+  is `new Resource(...)` not `resourceFromAttributes` (2.x) — otel.ts updated;
+  `tsc --noEmit` for @fx/node-api now passes against the real lockfile.
+  NOT verified: an actual trace round-trip, Grafana provisioning boot.
+
+### 2026-07-06 — Step 2.1: Broker abstraction & execution adapters (QN-030, QN-032, QN-033, QN-034; QN-031 dropped)
+
+- **QN-031 (MT5) DROPPED by product decision** (user, 2026-07-06): OANDA v20
+  provides both market data and trade execution; a second venue added
+  maintenance cost with no capability gain, and `MetaTrader5` is Windows-only
+  anyway. Stories doc + PRD updated in place. Venue-agnosticism is preserved
+  structurally: adapter protocol + conformance suite + per-broker symbol table
+  + `Broker` enum all stay extensible; a future venue = new factory in
+  `ADAPTER_FACTORIES` + one symbol-table column + one enum value.
+- **Contract (QN-030):** `packages/types/src/broker.ts` — Broker, OrderSide,
+  OrderStatus, OrderRequest, OrderResult, BrokerPosition, BrokerTradeRecord;
+  registered in `contractSchemas` (⇒ regen needed, see pending actions).
+  Python runtime models in `app/execution/models.py` mirror the fields
+  (hand-written pydantic, NOT the QN-003 codegen output — adapters need
+  behavior: signed-units, fill-consistency validators).
+- **`services/quant/app/execution/`:** `adapter.py` (runtime-checkable
+  `BrokerAdapter` protocol: connect/get_positions/place_order/close_order/
+  get_history; rejects are RESULTS not exceptions, only transport raises
+  `BrokerError`), `oanda_adapter.py` (QN-032: FOK market orders with
+  `clientExtensions.id` idempotency — duplicate reject recovers the ORIGINAL
+  fill via `orders/@{clientId}` + fill transaction; partial fills return
+  remainder; openPositions/trades mapping; connect() records account currency
+  + marginRate), `symbols.py` (QN-033: per-broker table, identity for OANDA,
+  registry-coverage invariant CI-enforced), `sizing.py` (QN-034: RateProvider
+  protocol + FixedRates w/ USD pivot; pip_value/margin_required/
+  units_for_risk — QN-043's building block), `credentials.py` (BE-131 Python
+  decrypt: v1 AES-256-GCM envelope, AAD `fx-broker-credentials:v1`,
+  tag-reorder for the `cryptography` API + asyncpg row loader).
+- **Tests:** `tests/execution/` — 56 tests: conformance suite (parametrized
+  over adapter factories, runs against a stateful `FakeOanda` MockTransport),
+  OANDA edge cases (partial/reject/duplicate/symbol coverage/protections),
+  sizing GBP-account fixtures (QN-034 AC), credentials incl. an envelope
+  sealed by the REAL Node implementation (cross-language parity pin).
+- Deps added to quant pyproject: `cryptography`, `opentelemetry-*` (BE-140).
+- Verified: **56/56 pass** — run in the sandbox on Python 3.10 with a
+  `datetime.UTC` shim (sandbox has no 3.13; only stdlib-level difference).
+  NOT verified: pytest on 3.13, mypy/ruff, contracts regen, a real
+  practice-account round-trip (needs OANDA creds — recommend before Step 2.2).
 
 ---
 

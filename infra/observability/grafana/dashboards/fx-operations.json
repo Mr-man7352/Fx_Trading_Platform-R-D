@@ -1,0 +1,179 @@
+{
+  "__comment": "BE-141 — FX operations dashboard. Queue + build panels are live now; LLM/breaker/reconciliation/drawdown panels use the contracted metric names (README.md) and populate as Phases 2-3 emit them.",
+  "uid": "fx-operations",
+  "title": "FX Platform — Operations",
+  "tags": ["fx", "be-141"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Queue depth (waiting + delayed)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "fx-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 25 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (queue) (fx_queue_jobs{state=~\"waiting|delayed\"})",
+          "legendFormat": "{{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Queue failures",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "fx-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (queue) (fx_queue_jobs{state=\"failed\"})",
+          "legendFormat": "{{queue}} failed"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "LLM latency p95 / p50 (Phase 3)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "fx-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 30 }]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(fx_llm_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum(rate(fx_llm_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "LLM cost — month to date vs budget (Phase 3)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "fx-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "max(fx_llm_month_cost_usd)", "legendFormat": "cost MTD" },
+        { "refId": "B", "expr": "max(fx_llm_month_budget_usd)", "legendFormat": "budget" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "gRPC circuit breaker (Phase 2)",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "fx-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "CLOSED", "color": "green" },
+                "1": { "text": "HALF-OPEN", "color": "yellow" },
+                "2": { "text": "OPEN", "color": "red" }
+              }
+            }
+          ],
+          "noValue": "no data yet"
+        },
+        "overrides": []
+      },
+      "targets": [{ "refId": "A", "expr": "max(fx_grpc_circuit_breaker_state)" }]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Reconciliation mismatches, 24h (Phase 2)",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "fx-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "no data yet",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(fx_reconciliation_mismatches_total[24h]))" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Daily drawdown % (Phase 2/3)",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "fx-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "no data yet",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [{ "refId": "A", "expr": "max(fx_daily_drawdown_pct)" }]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Build / scrape health",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "fx-prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "noValue": "api /metrics unreachable" },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "fx_metrics_up", "legendFormat": "metrics up" },
+        { "refId": "B", "expr": "fx_build_info", "legendFormat": "{{commit}} ({{trading_mode}})" }
+      ]
+    }
+  ]
+}

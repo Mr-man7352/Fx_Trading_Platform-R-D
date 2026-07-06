@@ -25,7 +25,7 @@ class Trade(BaseModel):
         populate_by_name=True,
     )
     id: str
-    instrument: constr(pattern=r"^[A-Z0-9]{2,4}_[A-Z0-9]{2,4}$")
+    instrument: constr(pattern=r"^[A-Z0-9]{2,6}_[A-Z0-9]{2,6}$")
     side: Side
     units: float
     mode: Mode

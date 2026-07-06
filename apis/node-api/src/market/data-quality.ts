@@ -51,9 +51,11 @@ export function isLikelyMarketClosed(ts: Date): boolean {
 }
 
 class LogSink implements DataQualitySink {
-  // biome-ignore lint/suspicious/noConsole: default sink; worker injects a real one.
+  // Default sink logs to console; the worker injects a real one.
   record(flag: DataQualityFlag): void {
-    console.warn(`[data-quality] ${flag.severity} ${flag.kind} ${flag.instrument}: ${flag.message}`);
+    console.warn(
+      `[data-quality] ${flag.severity} ${flag.kind} ${flag.instrument}: ${flag.message}`,
+    );
   }
 }
 

@@ -178,27 +178,31 @@ Each story is tracker-ready. Story IDs use prefix `QN-`. Story points use Fibona
 ## EP-QN-3 — Broker abstraction & execution adapters
 
 ### QN-030 — Typed BrokerAdapter interface
-**As a** developer **I want** a shared BrokerAdapter contract **so that** MT5 and OANDA are swappable.
+**As a** developer **I want** a shared BrokerAdapter contract **so that** execution venues are swappable behind one seam.
 
 **Acceptance criteria**
-- Given Zod/JSON Schema contract, when both adapters implemented, then conformance tests pass for: connect, get_positions, place_order, close_order, get_history.
+- Given Zod/JSON Schema contract, when an adapter is implemented, then the shared conformance suite passes for: connect, get_positions, place_order (idempotent retry), close_order, get_history.
+- Given a future second venue, when its adapter is added, then it must pass the same conformance suite unchanged (no OANDA details leaked into the interface).
+
+*(Revised 2026-07-06: originally "MT5 and OANDA are swappable" — QN-031 was dropped, see below.)*
 
 **Dependencies** — QN-003. **Points:** 5 · **Phase:** 2 · **Epic:** EP-QN-3
 
 ---
 
-### QN-031 — MT5 adapter (optional, not on critical path)
-**As the** system **I want** MT5 adapter as optional future venue **so that** alternative execution remains possible.
+### QN-031 — ~~MT5 adapter (optional, not on critical path)~~ **DROPPED (2026-07-06)**
 
-**Acceptance criteria**
-- Given demo account, when market order placed, then fill returned with `broker_trade_id`; idempotent retry via magic + UUID comment verified.
-- Given headless terminal, when adapter connects, then reconnect on disconnect with safe state.
-- Given production deploy, when reviewed, then MT5 is not required for live trading (OANDA is sole venue).
+**Dropped by product decision during Step 2.1:** OANDA's v20 API covers both
+market data (QN-020/021) and trade execution (QN-032), so a second venue adds
+maintenance cost with no capability gain. The `MetaTrader5` package being
+Windows-only (unusable in the Linux image/CI) sealed it.
 
-**Technical notes**
-- The `MetaTrader5` Python package is **Windows-only** — it cannot run in the Linux service image or CI. Interface conformance tests run against a mocked adapter in CI; live MT5 verification requires a Windows environment and is deferred until/unless the venue is activated.
+What preserves the original intent ("alternative execution remains possible"):
+- The QN-030 `BrokerAdapter` protocol + conformance suite stay venue-agnostic; any future venue must pass the suite unchanged.
+- The QN-033 symbol table keeps its per-broker shape (a new venue = one new column).
+- `Broker` stays an enum in `@fx/types` — adding a venue is an enum value, not a schema change.
 
-**Dependencies** — QN-030. **Points:** 8 · **Phase:** 2 · **Epic:** EP-QN-3
+**Dependencies** — n/a (dropped). **Points:** 0 · **Phase:** — · **Epic:** EP-QN-3
 
 ---
 
@@ -216,10 +220,13 @@ Each story is tracker-ready. Story IDs use prefix `QN-`. Story points use Fibona
 ---
 
 ### QN-033 — Symbol mapping table
-**As a** developer **I want** per-broker symbol resolution **so that** EURUSD.r / XAUUSD / USOIL / UKOIL map correctly.
+**As a** developer **I want** per-broker symbol resolution **so that** all configured instruments map correctly to venue symbols.
 
 **Acceptance criteria**
 - Given instrument enum, when resolved per broker, then correct broker symbol returned for all configured instruments.
+- Given the instrument registry (BE-045 mirror), when compared to the mapping table, then every registry instrument has a mapping row (CI-enforced) and round-trips through resolve/reverse.
+
+*(Revised 2026-07-06: original one-liner cited MT5-style tickers (EURUSD.r / USOIL / UKOIL); with QN-031 dropped, OANDA mapping is identity — the per-broker table shape is kept for future venues.)*
 
 **Dependencies** — QN-030. **Points:** 3 · **Phase:** 2 · **Epic:** EP-QN-3
 

@@ -21,7 +21,11 @@ function setup() {
   return { repo, monitor, triggers, proc };
 }
 
-const tick = (iso: string, mid: number) => ({ ts: new Date(iso), bid: mid - 0.00005, ask: mid + 0.00005 });
+const tick = (iso: string, mid: number) => ({
+  ts: new Date(iso),
+  bid: mid - 0.00005,
+  ask: mid + 0.00005,
+});
 
 describe('MarketDataProcessor (BE-040)', () => {
   it('aggregates ticks into M1 bars and persists on close', async () => {

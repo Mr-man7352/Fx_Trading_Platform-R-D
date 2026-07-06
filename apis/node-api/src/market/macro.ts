@@ -101,7 +101,12 @@ export class EiaSource implements MacroSource {
   private readonly http: HttpClient;
   private readonly host: string;
   constructor(
-    private readonly opts: { apiKey: string; seriesIds: string[]; http?: HttpClient; host?: string },
+    private readonly opts: {
+      apiKey: string;
+      seriesIds: string[];
+      http?: HttpClient;
+      host?: string;
+    },
   ) {
     this.http = opts.http ?? defaultHttpClient;
     this.host = opts.host ?? 'https://api.eia.gov';
@@ -113,10 +118,18 @@ export class EiaSource implements MacroSource {
       const url = `${this.host}/v2/seriesid/${encodeURIComponent(series)}?api_key=${encodeURIComponent(this.opts.apiKey)}`;
       const res = await this.http(url);
       if (!res.ok) continue;
-      const body = (await res.json()) as { response?: { data?: { period: string; value: number }[] } };
+      const body = (await res.json()) as {
+        response?: { data?: { period: string; value: number }[] };
+      };
       for (const d of body.response?.data ?? []) {
         const release = new Date(`${d.period}T14:30:00Z`); // 10:30 EDT ≈ 14:30 UTC
-        out.push({ series, releaseTs: release, period: d.period, value: Number(d.value), source: 'eia' });
+        out.push({
+          series,
+          releaseTs: release,
+          period: d.period,
+          value: Number(d.value),
+          source: 'eia',
+        });
       }
     }
     return out;

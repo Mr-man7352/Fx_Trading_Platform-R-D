@@ -1,0 +1,30 @@
+# BE-141 — contact points. Secrets come from the container env (compose passes
+# TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID / SMS_WEBHOOK_URL through; blank values
+# mean notifications simply fail silently while alerts stay visible in the UI).
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: fx-warning
+    receivers:
+      - uid: fx-tg-warning
+        type: telegram
+        settings:
+          bottoken: $TELEGRAM_BOT_TOKEN
+          chatid: $TELEGRAM_CHAT_ID
+        disableResolveMessage: false
+
+  - orgId: 1
+    name: fx-critical
+    receivers:
+      - uid: fx-tg-critical
+        type: telegram
+        settings:
+          bottoken: $TELEGRAM_BOT_TOKEN
+          chatid: $TELEGRAM_CHAT_ID
+      # SMS via provider webhook (Twilio function / gateway of choice).
+      - uid: fx-sms-critical
+        type: webhook
+        settings:
+          url: $SMS_WEBHOOK_URL
+          httpMethod: POST

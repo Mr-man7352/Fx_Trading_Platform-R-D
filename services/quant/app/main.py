@@ -18,6 +18,7 @@ from fx_common import setup_logging
 from app.config import get_settings
 from app.contracts.HealthResponse import HealthResponse, TradingMode
 from app.grpc.server import GrpcServer
+from app.telemetry import setup_telemetry
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -29,6 +30,9 @@ logger = logging.getLogger(__name__)
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     setup_logging("quant", settings.trading_mode, settings.log_level)
+    # BE-140 — must precede GrpcServer(): the aio-server instrumentor patches
+    # the server constructor. No-op without OTEL_EXPORTER_OTLP_ENDPOINT.
+    setup_telemetry(app, settings)
 
     grpc_server = GrpcServer(port=settings.quant_grpc_port)
     await grpc_server.start()

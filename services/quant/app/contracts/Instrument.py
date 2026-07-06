@@ -6,7 +6,7 @@ from __future__ import annotations
 from pydantic import Field, RootModel, constr
 
 
-class Instrument(RootModel[constr(pattern=r"^[A-Z0-9]{2,4}_[A-Z0-9]{2,4}$")]):
-    root: constr(pattern=r"^[A-Z0-9]{2,4}_[A-Z0-9]{2,4}$") = Field(
+class Instrument(RootModel[constr(pattern=r"^[A-Z0-9]{2,6}_[A-Z0-9]{2,6}$")]):
+    root: constr(pattern=r"^[A-Z0-9]{2,6}_[A-Z0-9]{2,6}$") = Field(
         ..., title="Instrument"
     )

@@ -56,6 +56,14 @@ const EnvSchema = z.object({
   FRED_API_KEY: z.string().optional(),
   EIA_API_KEY: z.string().optional(),
   /**
+   * BE-140 — OTLP/HTTP collector endpoint (Tempo). Optional: unset ⇒ tracing
+   * fully disabled (src/otel.ts no-ops and BullMQ telemetry is not attached).
+   */
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.preprocess(
+    (v) => (v === '' ? undefined : v), // compose passes "" when unset
+    z.string().url().optional(),
+  ),
+  /**
    * BE-131 — base64 of exactly 32 random bytes; seals broker credentials
    * (AES-256-GCM). Generate with `openssl rand -base64 32`. Rotation bumps
    * `broker_credentials.key_version`.

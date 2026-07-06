@@ -1,0 +1,176 @@
+# BE-141 — provisioned alert rules with the thresholds from the story AC.
+# Metric names are the platform contract (see ../../../README.md): queue gauges
+# are live today (BE-141 /metrics); LLM, breaker, reconciliation and drawdown
+# gauges are emitted by their owning stories (Phases 2–3) — until then those
+# rules sit in NoData (noDataState: OK ⇒ silent, not firing).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: fx-operational-alerts
+    folder: FX Platform
+    interval: 1m
+    rules:
+      # Given `signals` queue depth >10 for 2 min → warning.
+      - uid: fx-queue-depth-warning
+        title: Signals queue depth > 10
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: signals queue backing up (>10 jobs for 2m) — worker slow or quant stalled
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: fx-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(fx_queue_jobs{queue="signals",state=~"waiting|delayed"})
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+
+      # >25 → critical (Telegram + SMS via notification policy).
+      - uid: fx-queue-depth-critical
+        title: Signals queue depth > 25
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: critical }
+        annotations:
+          summary: signals queue critically deep (>25) — execution pipeline at risk
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: fx-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(fx_queue_jobs{queue="signals",state=~"waiting|delayed"})
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [25] }
+
+      # LLM p95 latency >30s for 5 min → warning. (fx_llm_latency_seconds — Phase 3)
+      - uid: fx-llm-latency-warning
+        title: LLM p95 latency > 30s
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: LLM p95 latency above 30s for 5m — provider degradation or token bloat
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: fx-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: histogram_quantile(0.95, sum(rate(fx_llm_latency_seconds_bucket[5m])) by (le))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [30] }
+
+      # gRPC circuit breaker OPEN → critical. (fx_grpc_circuit_breaker_state:
+      # 0 closed, 1 half-open, 2 open — BE-068, Phase 2)
+      - uid: fx-breaker-open-critical
+        title: gRPC circuit breaker OPEN
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: critical }
+        annotations:
+          summary: Node→quant gRPC circuit breaker is OPEN — signals are HOLDing
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: fx-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: max(fx_grpc_circuit_breaker_state)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1.5] }
+
+      # Daily DD >4% (80% of the 5% halt) → warning. (fx_daily_drawdown_pct — Phase 2/3 risk core)
+      - uid: fx-drawdown-warning
+        title: Daily drawdown > 4%
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: daily drawdown above 4% — 80% of the automatic halt threshold
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: fx-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: max(fx_daily_drawdown_pct)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [4] }
+
+      # Monthly LLM cost >85% of budget → warning. (fx_llm_month_cost_usd /
+      # fx_llm_month_budget_usd — Phase 3 cost tracker)
+      - uid: fx-llm-cost-warning
+        title: Monthly LLM cost > 85% of budget
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: monthly LLM spend crossed 85% of budget — throttling imminent
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: fx-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: max(fx_llm_month_cost_usd) / clamp_min(max(fx_llm_month_budget_usd), 1) * 100
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [85] }

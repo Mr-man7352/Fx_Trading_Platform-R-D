@@ -1,0 +1,52 @@
+{
+  "title": "OrderRequest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "clientOrderId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "instrument": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]{2,6}_[A-Z0-9]{2,6}$"
+    },
+    "side": {
+      "type": "string",
+      "enum": ["buy", "sell"]
+    },
+    "units": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "type": {
+      "default": "market",
+      "type": "string",
+      "const": "market"
+    },
+    "stopLossPrice": {
+      "anyOf": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "takeProfitPrice": {
+      "anyOf": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": ["clientOrderId", "instrument", "side", "units", "type"],
+  "additionalProperties": false
+}

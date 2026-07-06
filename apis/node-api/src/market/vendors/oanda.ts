@@ -52,7 +52,9 @@ export class OandaCandleSource implements CandleSource {
     this.token = opts.apiToken;
     this.host =
       opts.restHost ??
-      (opts.environment === 'live' ? 'https://api-fxtrade.oanda.com' : 'https://api-fxpractice.oanda.com');
+      (opts.environment === 'live'
+        ? 'https://api-fxtrade.oanda.com'
+        : 'https://api-fxpractice.oanda.com');
   }
 
   async *fetchCandles(req: CandleFetchRequest): AsyncGenerator<CandleRow[], void, unknown> {

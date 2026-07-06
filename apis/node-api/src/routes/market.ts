@@ -48,7 +48,11 @@ export function registerMarketRoutes(app: FastifyInstance): void {
       const { instrument, timeframe, from, to, limit, includeIncomplete } = req.query;
       if (!isKnownInstrument(instrument)) {
         return reply.code(400).send({
-          error: { code: 'UNKNOWN_INSTRUMENT', message: `Unknown instrument: ${instrument}`, requestId: req.id },
+          error: {
+            code: 'UNKNOWN_INSTRUMENT',
+            message: `Unknown instrument: ${instrument}`,
+            requestId: req.id,
+          },
         });
       }
       const repo = new MarketRepo(app.prisma);

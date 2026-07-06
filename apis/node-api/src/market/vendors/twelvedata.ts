@@ -1,10 +1,6 @@
 import type { Timeframe } from '@fx/types';
 import { getInstrument } from '../instruments.js';
-import {
-  type CrossCheckSource,
-  defaultHttpClient,
-  type HttpClient,
-} from './types.js';
+import { type CrossCheckSource, defaultHttpClient, type HttpClient } from './types.js';
 
 /**
  * BE-041/QN-021 — Twelve Data free-tier cross-check source. Used only to

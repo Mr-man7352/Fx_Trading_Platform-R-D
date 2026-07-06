@@ -6,14 +6,14 @@ import {
   AgentVoteCard,
   AppShell,
   Button,
+  cn,
   DISCLAIMER_TEXT,
   DisclaimerBanner,
+  formatSigned,
   KillSwitchButton,
   MODE_BADGE_STYLES,
   ModeBadge,
   PnLTile,
-  cn,
-  formatSigned,
   pnlDirection,
 } from './index';
 

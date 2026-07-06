@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     market_ticks_queue: str = "market-ticks"
     # Instruments to stream/backfill (OANDA names). Comma-separated in env.
     market_instruments: str = "EUR_USD,GBP_USD,USD_JPY,XAU_USD,WTICO_USD,BCO_USD"
+    # BE-140 — OTLP/HTTP collector endpoint (Tempo). Unset ⇒ tracing disabled.
+    otel_exporter_otlp_endpoint: str | None = None
+    # BE-131/QN-032 — same base64(32-byte) key the Node side seals broker
+    # credentials with; the execution adapter decrypts envelopes with it.
+    credentials_encryption_key: str | None = None
     # Backfill window + base granularity (QN-021).
     backfill_months: int = 6
     backfill_granularity: str = "M1"

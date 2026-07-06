@@ -1,0 +1,15 @@
+# BE-141 — routing: critical → Telegram + SMS, everything else → Telegram.
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: fx-warning
+    group_by: ["alertname"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - receiver: fx-critical
+        object_matchers:
+          - ["severity", "=", "critical"]
+        repeat_interval: 30m

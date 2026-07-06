@@ -27,23 +27,15 @@
                 "type": "string"
               }
             },
-            "required": [
-              "path",
-              "message"
-            ],
+            "required": ["path", "message"],
             "additionalProperties": false
           }
         }
       },
-      "required": [
-        "code",
-        "message"
-      ],
+      "required": ["code", "message"],
       "additionalProperties": false
     }
   },
-  "required": [
-    "error"
-  ],
+  "required": ["error"],
   "additionalProperties": false
 }

@@ -1,5 +1,6 @@
 import type { DataQualityFlag } from '@fx/types';
-import { type ConnectionOptions, type Job, Queue, Worker } from 'bullmq';
+import { type ConnectionOptions, type Job, Queue, type Telemetry, Worker } from 'bullmq';
+import { BullMQOtel } from 'bullmq-otel';
 import { Redis } from 'ioredis';
 import { createPrismaClient, type PrismaClient } from '../db.js';
 import type { Env } from '../env.js';
@@ -40,7 +41,12 @@ export function startMarketDataWorker(env: Env): MarketDataWorkerHandle {
   const prisma: PrismaClient = createPrismaClient(env);
   const repo = new MarketRepo(prisma);
   const monitor = new DataQualityMonitor(new RedisDataQualitySink(connection.duplicate()));
-  const signals = new Queue(SIGNALS_QUEUE, { connection: bullConnection });
+  // BE-140 — BullMQ's native telemetry hook: job add/process spans join the
+  // trace exported by src/otel.ts. Only attached when tracing is on.
+  const telemetry: Telemetry | undefined = env.OTEL_EXPORTER_OTLP_ENDPOINT
+    ? new BullMQOtel('fx-node-api')
+    : undefined;
+  const signals = new Queue(SIGNALS_QUEUE, { connection: bullConnection, telemetry });
 
   const processor = new MarketDataProcessor(repo, monitor, async (t) => {
     await signals.add(
@@ -56,7 +62,7 @@ export function startMarketDataWorker(env: Env): MarketDataWorkerHandle {
       const { instrument, ts, bid, ask } = job.data;
       await processor.onTick(instrument, { ts: new Date(ts), bid, ask });
     },
-    { connection: bullConnection, concurrency: 4 },
+    { connection: bullConnection, concurrency: 4, telemetry },
   );
 
   // Stale-feed sweep: a feed that goes quiet raises a degraded flag (QN-020).

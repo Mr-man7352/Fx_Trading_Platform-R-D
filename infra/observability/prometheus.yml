@@ -1,0 +1,17 @@
+# BE-141 — Prometheus scrape config for the local observability profile.
+# The api service exposes GET /metrics (public route, hand-rolled exposition —
+# apis/node-api/src/routes/metrics.ts). Add scrape targets as services grow
+# metric endpoints; keep job names stable — the alert rules reference them.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: fx-node-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:4000"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

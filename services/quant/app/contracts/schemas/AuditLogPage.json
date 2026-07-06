@@ -45,11 +45,7 @@
           },
           "tradingMode": {
             "type": "string",
-            "enum": [
-              "backtest",
-              "paper",
-              "live"
-            ]
+            "enum": ["backtest", "paper", "live"]
           }
         },
         "required": [
@@ -82,11 +78,6 @@
       "maximum": 9007199254740991
     }
   },
-  "required": [
-    "items",
-    "page",
-    "pageSize",
-    "total"
-  ],
+  "required": ["items", "page", "pageSize", "total"],
   "additionalProperties": false
 }

@@ -39,7 +39,7 @@ export async function backfillCandles(params: BackfillParams): Promise<BackfillR
   const pageSize = params.pageSize ?? MARKET_CANDLES_MAX_LIMIT;
   const tolerance = params.crossCheckTolerancePips ?? 2;
   const sampleEvery = params.crossCheckSampleEvery ?? 200;
-  const pip = pipSize(getInstrument(params.instrument) ?? { pipLocation: -4 } as never);
+  const pip = pipSize(getInstrument(params.instrument) ?? ({ pipLocation: -4 } as never));
 
   const result: BackfillResult = {
     instrument: params.instrument,

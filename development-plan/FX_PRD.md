@@ -155,7 +155,7 @@ Six phases, sequenced by dependency (see System Design §14). Within each phase,
 - QN-032 — OANDA v20 adapter (primary execution venue, ADR-005).
 - QN-033 — Symbol mapping table.
 - QN-034 — Cross-currency pip/lot/margin module.
-- QN-031 — MT5 adapter (optional, off critical path; interface conformance via mock in CI).
+- ~~QN-031 — MT5 adapter~~ — **dropped 2026-07-06** (OANDA v20 covers data + execution; adapter seam stays venue-agnostic via the QN-030 conformance suite — see FX_Stories_PythonQuant.md).
 
 **Step 2.2 — Order lifecycle & reconciliation**
 

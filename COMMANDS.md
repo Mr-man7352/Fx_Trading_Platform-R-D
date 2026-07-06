@@ -112,8 +112,8 @@ test the prod-like setup. Docker Desktop must be running.
 pnpm stack:up       # START all services (reuses built images — fast)
 pnpm stack:build    # REBUILD + start (after code or Dockerfile changes)
 pnpm stack:ps       # STATUS (every service should read "healthy")
-pnpm stack:down     # STOP containers (keeps data — next stack:up is instant)
-pnpm stack:remove   # remove containers + networks (keeps data volumes)
+pnpm stack:down     # STOP all containers incl. Dozzle + quant-stream (keeps data — next stack:up is instant)
+pnpm stack:remove   # remove containers + networks incl. profiled ones (keeps data volumes)
 ```
 
 Health checks once running:

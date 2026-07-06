@@ -8,8 +8,7 @@ import { startMarketDataWorker } from './market-data.js';
 
 const env = loadEnv();
 const handle = startMarketDataWorker(env);
-// biome-ignore lint/suspicious/noConsole: process bootstrap line before logger wiring.
-console.log(`@fx/node-api market-data worker up (mode=${env.TRADING_MODE})`);
+console.log(`@fx/node-api market-data worker up (mode=${env.TRADING_MODE})`); // pre-logger bootstrap line
 
 let shuttingDown = false;
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

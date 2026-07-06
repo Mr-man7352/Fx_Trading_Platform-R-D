@@ -17,6 +17,13 @@ dependencies = [
   "httpx>=0.27",            # QN-020/021 OANDA + Twelve Data clients (also TestClient)
   "bullmq>=2.0",            # QN-020 stream → market-ticks queue (Node BE-040 consumes)
   "asyncpg>=0.29",          # QN-021/022 candle + news I/O into TimescaleDB
+  "cryptography>=43.0",     # QN-032 broker-credential envelope decrypt (BE-131 format)
+  # BE-140 — tracing; no-op without OTEL_EXPORTER_OTLP_ENDPOINT (app/telemetry.py).
+  "opentelemetry-sdk>=1.27",
+  "opentelemetry-exporter-otlp-proto-http>=1.27",
+  "opentelemetry-instrumentation-fastapi>=0.48b0",
+  "opentelemetry-instrumentation-grpc>=0.48b0",
+  "opentelemetry-instrumentation-httpx>=0.48b0",
   "fx-common",
 ]
 
@@ -85,6 +92,11 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # QN-020/021/022 runner deps — imported lazily; no bundled type stubs.
 module = ["bullmq.*", "asyncpg.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# BE-140 — instrumentation packages ship no py.typed; imported lazily.
+module = ["opentelemetry.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

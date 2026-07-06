@@ -15,18 +15,9 @@
     },
     "tradingMode": {
       "type": "string",
-      "enum": [
-        "backtest",
-        "paper",
-        "live"
-      ]
+      "enum": ["backtest", "paper", "live"]
     }
   },
-  "required": [
-    "status",
-    "commit",
-    "uptime",
-    "tradingMode"
-  ],
+  "required": ["status", "commit", "uptime", "tradingMode"],
   "additionalProperties": false
 }

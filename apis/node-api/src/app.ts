@@ -22,6 +22,7 @@ import { EventBus } from './events.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerMarketRoutes } from './routes/market.js';
+import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerWsRoutes } from './routes/ws.js';
 
 declare module 'fastify' {
@@ -170,6 +171,7 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
   });
 
   registerHealthRoutes(app, env);
+  registerMetricsRoutes(app); // BE-141 — Prometheus scrape target
   registerWsRoutes(app, env);
   registerAuditRoutes(app); // BE-130 — GET /audit (503 without a DB client)
   registerMarketRoutes(app); // BE-042/BE-045 — /market/{instruments,candles,news}

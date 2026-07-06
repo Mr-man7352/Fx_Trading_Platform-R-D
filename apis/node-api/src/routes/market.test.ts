@@ -53,7 +53,11 @@ describe('BE-045 — GET /market/instruments', () => {
     expect(res.statusCode).toBe(200);
     const { instruments } = res.json();
     const eur = instruments.find((i: { name: string }) => i.name === 'EUR_USD');
-    expect(eur).toMatchObject({ oandaSymbol: 'EUR_USD', twelveDataSymbol: 'EUR/USD', pipLocation: -4 });
+    expect(eur).toMatchObject({
+      oandaSymbol: 'EUR_USD',
+      twelveDataSymbol: 'EUR/USD',
+      pipLocation: -4,
+    });
     expect(instruments.some((i: { name: string }) => i.name === 'XAU_USD')).toBe(true);
   });
 });
@@ -72,7 +76,11 @@ describe('BE-045 — GET /market/candles', () => {
 
   it('400 on a missing instrument (Zod validation)', async () => {
     app = await buildApp(testEnv(), { prisma: fakePrismaWithCandles([]) });
-    const res = await app.inject({ method: 'GET', url: '/market/candles?timeframe=H1', headers: auth });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/market/candles?timeframe=H1',
+      headers: auth,
+    });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('VALIDATION');
   });
@@ -124,7 +132,11 @@ describe('BE-045 — GET /market/candles', () => {
 describe('BE-042 — GET /market/news', () => {
   it('503 without a DB client', async () => {
     app = await buildApp(testEnv());
-    const res = await app.inject({ method: 'GET', url: '/market/news?asOf=2026-03-10T10:00:00Z', headers: auth });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/market/news?asOf=2026-03-10T10:00:00Z',
+      headers: auth,
+    });
     expect(res.statusCode).toBe(503);
   });
 });

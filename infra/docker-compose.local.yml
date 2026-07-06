@@ -55,6 +55,8 @@ services:
       QUANT_GRPC_PORT: "50051"
       GIT_COMMIT: ${GIT_COMMIT:-local}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # BE-140 — empty ⇒ tracing off. In-network Tempo (observability profile).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "127.0.0.1:5001:5001"
       # gRPC — published for local debugging (grpcurl); workers use the
@@ -79,6 +81,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
       REDIS_URL: redis://redis:6379
       QUANT_URL: http://quant:5001
+      # BE-140 — empty ⇒ tracing off. In-network Tempo (observability profile).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:
@@ -112,6 +116,8 @@ services:
       CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-ZGV2LW9ubHktY3JlZGVudGlhbHMta2V5LTMyYnl0ZXM=}
       DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
       REDIS_URL: redis://redis:6379
+      # BE-140 — empty ⇒ tracing off. In-network Tempo (observability profile).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       db:
         condition: service_healthy
@@ -165,6 +171,59 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
+  # ── BE-140/141 — observability profile: Tempo (traces), Prometheus (metrics),
+  # Grafana (dashboards + alerting). Opt-in:
+  #   docker compose -f infra/docker-compose.local.yml --profile observability up -d
+  # then set OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318 (compose) /
+  # http://localhost:4318 (bare `pnpm dev`) and restart api/worker/quant.
+  # Grafana: http://localhost:3001 (admin / ${GRAFANA_ADMIN_PASSWORD:-admin}).
+  tempo:
+    profiles: ["observability"]
+    image: grafana/tempo:2.7.1
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./observability/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "127.0.0.1:4318:4318" # OTLP/HTTP ingest (host-side apps)
+      - "127.0.0.1:3200:3200" # Tempo query API (Grafana datasource)
+
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.4.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:12.0.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # BE-141 — Telegram/SMS contact-point secrets (blank ⇒ alerts stay in UI).
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      SMS_WEBHOOK_URL: ${SMS_WEBHOOK_URL:-}
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - tempo
+      - prometheus
+
 volumes:
   db_data:
   redis_data:
+  tempo_data:
+  prom_data:
+  grafana_data:

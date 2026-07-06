@@ -47,14 +47,24 @@ describe('OandaCandleSource', () => {
     });
     const source = new OandaCandleSource({ apiToken: 't', http });
 
-    const rows = await collect(source, new Date('2026-03-10T14:00:00Z'), new Date('2026-03-10T15:00:00Z'));
+    const rows = await collect(
+      source,
+      new Date('2026-03-10T14:00:00Z'),
+      new Date('2026-03-10T15:00:00Z'),
+    );
 
     expect(rows.map((r) => r.ts.toISOString())).toEqual([
       '2026-03-10T14:00:00.000Z',
       '2026-03-10T14:01:00.000Z',
       '2026-03-10T14:02:00.000Z',
     ]);
-    expect(rows[0]).toMatchObject({ open: 1.08, high: 1.081, low: 1.079, close: 1.08, source: 'oanda' });
+    expect(rows[0]).toMatchObject({
+      open: 1.08,
+      high: 1.081,
+      low: 1.079,
+      close: 1.08,
+      source: 'oanda',
+    });
     // Bearer auth + first page uses includeFirst=true.
     expect(http.mock.calls[0]?.[1]?.headers?.Authorization).toBe('Bearer t');
   });
@@ -68,7 +78,11 @@ describe('OandaCandleSource', () => {
         ],
       });
     const source = new OandaCandleSource({ apiToken: 't', http });
-    const rows = await collect(source, new Date('2026-03-10T14:00:00Z'), new Date('2026-03-10T14:05:00Z'));
+    const rows = await collect(
+      source,
+      new Date('2026-03-10T14:00:00Z'),
+      new Date('2026-03-10T14:05:00Z'),
+    );
     expect(rows).toHaveLength(1);
   });
 
@@ -80,9 +94,9 @@ describe('OandaCandleSource', () => {
       text: async () => 'unauthorized',
     });
     const source = new OandaCandleSource({ apiToken: 'bad', http });
-    await expect(collect(source, new Date('2026-03-10T14:00:00Z'), new Date('2026-03-10T15:00:00Z'))).rejects.toThrow(
-      /HTTP 401/,
-    );
+    await expect(
+      collect(source, new Date('2026-03-10T14:00:00Z'), new Date('2026-03-10T15:00:00Z')),
+    ).rejects.toThrow(/HTTP 401/);
   });
 
   it('targets the practice host by default', () => {

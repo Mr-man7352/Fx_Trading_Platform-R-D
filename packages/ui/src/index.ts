@@ -4,52 +4,56 @@
  * `@fx/ui/theme.css` (import alongside `tailwindcss` in the app stylesheet).
  */
 
-// FE-010 — utilities + shadcn-style primitives (vendored)
-export { cn } from './lib/cn';
-export { Button, buttonVariants, type ButtonProps } from './components/button';
-export { Badge, badgeVariants, type BadgeProps } from './components/badge';
+export {
+  Alert,
+  AlertDescription,
+  type AlertProps,
+  AlertTitle,
+  alertVariants,
+} from './components/alert';
+export { Badge, type BadgeProps, badgeVariants } from './components/badge';
+export { Button, type ButtonProps, buttonVariants } from './components/button';
 export {
   Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
 } from './components/card';
 export {
   Dialog,
-  DialogTrigger,
-  DialogPortal,
   DialogClose,
-  DialogOverlay,
   DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
   DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
 } from './components/dialog';
 export { Input } from './components/input';
 export { Label } from './components/label';
 export { Separator } from './components/separator';
 export { Skeleton } from './components/skeleton';
-export { Alert, AlertTitle, AlertDescription, alertVariants, type AlertProps } from './components/alert';
-
-// FE-011 — trading compositions
-export { AppShell, type AppShellProps } from './trading/app-shell';
-export { ModeBadge, MODE_BADGE_STYLES, type ModeBadgeProps } from './trading/mode-badge';
+// FE-010 — utilities + shadcn-style primitives (vendored)
+export { cn } from './lib/cn';
 export {
-  PnLTile,
-  formatSigned,
-  pnlDirection,
-  type PnLTileProps,
-} from './trading/pnl-tile';
-export {
-  AgentVoteCard,
   AGENT_VOTE_STYLES,
   type AgentVote,
+  AgentVoteCard,
   type AgentVoteCardProps,
 } from './trading/agent-vote-card';
-export { KillSwitchButton, type KillSwitchButtonProps } from './trading/kill-switch-button';
-
+// FE-011 — trading compositions
+export { AppShell, type AppShellProps } from './trading/app-shell';
 // FE-110 (Phase-1 part) — compliance banner
-export { DisclaimerBanner, DISCLAIMER_TEXT } from './trading/disclaimer-banner';
+export { DISCLAIMER_TEXT, DisclaimerBanner } from './trading/disclaimer-banner';
+export { KillSwitchButton, type KillSwitchButtonProps } from './trading/kill-switch-button';
+export { MODE_BADGE_STYLES, ModeBadge, type ModeBadgeProps } from './trading/mode-badge';
+export {
+  formatSigned,
+  PnLTile,
+  type PnLTileProps,
+  pnlDirection,
+} from './trading/pnl-tile';

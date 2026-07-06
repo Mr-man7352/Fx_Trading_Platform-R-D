@@ -1,0 +1,80 @@
+{
+  "title": "OrderResult",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "clientOrderId": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["filled", "partial", "rejected"]
+    },
+    "broker": {
+      "type": "string",
+      "enum": ["oanda"]
+    },
+    "brokerOrderId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "brokerTradeId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "requestedUnits": {
+      "type": "number"
+    },
+    "filledUnits": {
+      "type": "number"
+    },
+    "remainderUnits": {
+      "type": "number"
+    },
+    "price": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "clientOrderId",
+    "status",
+    "broker",
+    "brokerOrderId",
+    "brokerTradeId",
+    "requestedUnits",
+    "filledUnits",
+    "remainderUnits",
+    "price",
+    "reason"
+  ],
+  "additionalProperties": false
+}

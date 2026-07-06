@@ -1,0 +1,22 @@
+# BE-141 — Grafana datasources for the observability profile (BE-140 traces +
+# BE-141 metrics). UIDs are stable: the dashboard + alert rules reference them.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: fx-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+
+  - name: Tempo
+    uid: fx-tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      serviceMap:
+        datasourceUid: fx-prometheus

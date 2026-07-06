@@ -62,6 +62,9 @@ export function AgentVoteCard({
           <span>Confidence</span>
           <span className="font-mono tabular-nums">{pct}%</span>
         </div>
+        {/* biome-ignore lint/a11y/useSemanticElements: native <meter> cannot be
+            styled cross-browser as a themed bar; div keeps identical semantics
+            via role + aria-value* attributes. */}
         <div
           role="meter"
           aria-label={`${agentName} confidence`}
