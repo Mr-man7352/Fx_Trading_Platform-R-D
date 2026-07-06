@@ -150,6 +150,21 @@ services:
       api:
         condition: service_healthy
 
+  # Dev-only log viewer — real-time streaming/search of all containers in a
+  # browser at http://localhost:8888. Reads the Docker socket read-only; runs
+  # no agents. Opt-in via profile so it never starts with the plain stack:
+  #   docker compose -f infra/docker-compose.local.yml --profile debug up -d dozzle
+  # (or just `pnpm debug`, which enables the profile for you).
+  dozzle:
+    profiles: ["debug"]
+    image: amir20/dozzle:latest
+    environment:
+      DOZZLE_FILTER: "name=fx-local-*"
+    ports:
+      - "127.0.0.1:8888:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
 volumes:
   db_data:
   redis_data:

@@ -7,7 +7,11 @@ WORKDIR /repo
 FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @fx/dashboard build
+# Build @fx/dashboard AND its workspace deps (@fx/types, @fx/api-client,
+# @fx/auth-client) in dependency order. Turbo respects `build: dependsOn ^build`
+# from turbo.json — `pnpm --filter @fx/dashboard build` alone skips the deps,
+# so their dist/ is missing and next build fails on `Can't resolve '@fx/types'`.
+RUN pnpm exec turbo run build --filter=@fx/dashboard
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production

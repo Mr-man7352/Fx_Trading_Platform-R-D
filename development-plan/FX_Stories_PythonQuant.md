@@ -74,7 +74,7 @@ Each story is tracker-ready. Story IDs use prefix `QN-`. Story points use Fibona
 **As a** developer **I want** a FastAPI + gRPC service scaffold **so that** quant work has a canonical home.
 
 **Acceptance criteria**
-- Given `services/quant/`, when `uv sync && uv run uvicorn app.main:app --reload` runs, then `GET /healthz` returns 200 on `:5000`.
+- Given `services/quant/`, when `uv sync && uv run uvicorn app.main:app --reload` runs, then `GET /healthz` returns 200 on `:5001` (moved off 5000 — macOS AirPlay).
 - Given gRPC server, when started, then listens on `:50051` with health check RPC.
 - Given `pytest`, when run, then starter tests pass.
 

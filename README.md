@@ -24,7 +24,7 @@ pnpm install
 cp .env.example .env        # then fill in values
 pnpm build                  # turbo: build all workspaces
 pnpm test                   # vitest across workspaces
-pnpm dev                    # FE-007: dashboard :3000, api :4000, quant :5000
+pnpm dev                    # FE-007: dashboard :3000, api :4000, quant :5001
 ```
 
 ## Local Docker stack (BE-004)

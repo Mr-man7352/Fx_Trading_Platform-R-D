@@ -164,7 +164,7 @@ Each story is tracker-ready: import into Linear/Jira/Notion as one ticket per st
 **As a** developer **I want** `pnpm dev` to bring up dashboard + API + quant **so that** I can work end-to-end locally.
 
 **Acceptance criteria**
-- Given the repo, when `pnpm dev` runs, then dashboard `:3000`, API `:4000`, quant `:5000` are healthy in <30s.
+- Given the repo, when `pnpm dev` runs, then dashboard `:3000`, API `:4000`, quant `:5001` are healthy in <30s.
 - Given missing `.env`, when starting, then a clear error lists missing keys.
 
 **Dependencies** — FE-002, BE-001. **Points:** 3 · **Phase:** 1 · **Epic:** EP-FE-1

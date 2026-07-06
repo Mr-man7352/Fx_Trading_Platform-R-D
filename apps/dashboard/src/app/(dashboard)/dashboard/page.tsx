@@ -1,4 +1,4 @@
-import { TradingModeSchema } from '@fx/types';
+import { TradingModeSchema } from "@fx/types";
 import {
   AgentVoteCard,
   AppShell,
@@ -10,8 +10,8 @@ import {
   DisclaimerBanner,
   ModeBadge,
   PnLTile,
-} from '@fx/ui';
-import { KillSwitch } from './kill-switch';
+} from "@fx/ui";
+import { KillSwitch } from "./kill-switch";
 
 /**
  * Step 1.7 — placeholder operator home exercising the FE-010/FE-011 design
@@ -19,11 +19,16 @@ import { KillSwitch } from './kill-switch';
  * Phase 5 (FE-040…131).
  */
 export default function DashboardPage() {
-  const mode = TradingModeSchema.catch('paper').parse(process.env.TRADING_MODE);
+  const mode = TradingModeSchema.catch("paper").parse(process.env.TRADING_MODE);
+  console.log("DashboardPage", { mode });
 
   return (
     <AppShell
-      brand={<span className="font-mono text-sm font-bold tracking-wider">FX PLATFORM</span>}
+      brand={
+        <span className="font-mono text-sm font-bold tracking-wider">
+          FX PLATFORM
+        </span>
+      }
       headerRight={
         <>
           <ModeBadge mode={mode} />
@@ -46,7 +51,8 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle>Latest debate — fixture</CardTitle>
           <CardDescription>
-            Multi-agent confirm/veto arrives in Phase 3; this exercises the FE-011 compositions.
+            Multi-agent confirm/veto arrives in Phase 3; this exercises the
+            FE-011 compositions.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
