@@ -14,7 +14,7 @@ from google.protobuf import timestamp_pb2
 
 from app.execution.adapter import BrokerError
 from app.execution.factory import load_adapter, reset_adapter_cache
-from app.execution.models import OrderRequest, TradeReduceInfo
+from app.execution.models import OrderRequest, OrderResult, TradeReduceInfo
 from app.proto_gen import quant_pb2, quant_pb2_grpc
 
 _STATUS_MAP = {
@@ -50,7 +50,7 @@ def _trade_reduce_msg(tc: TradeReduceInfo) -> quant_pb2.TradeReduceMsg:
     )
 
 
-def _order_result_response(result, *, broker: str) -> quant_pb2.PlaceOrderResponse:
+def _order_result_response(result: OrderResult, *, broker: str) -> quant_pb2.PlaceOrderResponse:
     return quant_pb2.PlaceOrderResponse(
         status=_STATUS_MAP.get(result.status, quant_pb2.EXECUTION_STATUS_UNSPECIFIED),
         broker=broker,

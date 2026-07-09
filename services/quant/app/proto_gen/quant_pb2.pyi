@@ -60,21 +60,27 @@ class RunPipelineRequest(_message.Message):
     def __init__(self, instrument: _Optional[str] = ..., timeframe: _Optional[_Union[Timeframe, str]] = ..., bar_ts: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class Candidate(_message.Message):
-    __slots__ = ("instrument", "side", "probability", "regime", "model_version")
+    __slots__ = ("instrument", "side", "probability", "regime", "model_version", "entry_price", "stop_loss_price", "take_profit_price")
     INSTRUMENT_FIELD_NUMBER: _ClassVar[int]
     SIDE_FIELD_NUMBER: _ClassVar[int]
     PROBABILITY_FIELD_NUMBER: _ClassVar[int]
     REGIME_FIELD_NUMBER: _ClassVar[int]
     MODEL_VERSION_FIELD_NUMBER: _ClassVar[int]
+    ENTRY_PRICE_FIELD_NUMBER: _ClassVar[int]
+    STOP_LOSS_PRICE_FIELD_NUMBER: _ClassVar[int]
+    TAKE_PROFIT_PRICE_FIELD_NUMBER: _ClassVar[int]
     instrument: str
     side: TradeSide
     probability: float
     regime: str
     model_version: str
-    def __init__(self, instrument: _Optional[str] = ..., side: _Optional[_Union[TradeSide, str]] = ..., probability: _Optional[float] = ..., regime: _Optional[str] = ..., model_version: _Optional[str] = ...) -> None: ...
+    entry_price: float
+    stop_loss_price: float
+    take_profit_price: float
+    def __init__(self, instrument: _Optional[str] = ..., side: _Optional[_Union[TradeSide, str]] = ..., probability: _Optional[float] = ..., regime: _Optional[str] = ..., model_version: _Optional[str] = ..., entry_price: _Optional[float] = ..., stop_loss_price: _Optional[float] = ..., take_profit_price: _Optional[float] = ...) -> None: ...
 
 class RunPipelineResponse(_message.Message):
-    __slots__ = ("features", "has_candidate", "candidate")
+    __slots__ = ("features", "has_candidate", "candidate", "session_label", "liquidity_regime", "trend_regime", "regime_entropy", "debate_rounds", "feature_set_version", "challenger_probability")
     class FeaturesEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -85,10 +91,24 @@ class RunPipelineResponse(_message.Message):
     FEATURES_FIELD_NUMBER: _ClassVar[int]
     HAS_CANDIDATE_FIELD_NUMBER: _ClassVar[int]
     CANDIDATE_FIELD_NUMBER: _ClassVar[int]
+    SESSION_LABEL_FIELD_NUMBER: _ClassVar[int]
+    LIQUIDITY_REGIME_FIELD_NUMBER: _ClassVar[int]
+    TREND_REGIME_FIELD_NUMBER: _ClassVar[int]
+    REGIME_ENTROPY_FIELD_NUMBER: _ClassVar[int]
+    DEBATE_ROUNDS_FIELD_NUMBER: _ClassVar[int]
+    FEATURE_SET_VERSION_FIELD_NUMBER: _ClassVar[int]
+    CHALLENGER_PROBABILITY_FIELD_NUMBER: _ClassVar[int]
     features: _containers.ScalarMap[str, float]
     has_candidate: bool
     candidate: Candidate
-    def __init__(self, features: _Optional[_Mapping[str, float]] = ..., has_candidate: _Optional[bool] = ..., candidate: _Optional[_Union[Candidate, _Mapping]] = ...) -> None: ...
+    session_label: str
+    liquidity_regime: str
+    trend_regime: str
+    regime_entropy: float
+    debate_rounds: int
+    feature_set_version: int
+    challenger_probability: float
+    def __init__(self, features: _Optional[_Mapping[str, float]] = ..., has_candidate: _Optional[bool] = ..., candidate: _Optional[_Union[Candidate, _Mapping]] = ..., session_label: _Optional[str] = ..., liquidity_regime: _Optional[str] = ..., trend_regime: _Optional[str] = ..., regime_entropy: _Optional[float] = ..., debate_rounds: _Optional[int] = ..., feature_set_version: _Optional[int] = ..., challenger_probability: _Optional[float] = ...) -> None: ...
 
 class SizePositionRequest(_message.Message):
     __slots__ = ("instrument", "side", "probability", "account_equity", "entry_price", "stop_loss_price")
@@ -107,16 +127,22 @@ class SizePositionRequest(_message.Message):
     def __init__(self, instrument: _Optional[str] = ..., side: _Optional[_Union[TradeSide, str]] = ..., probability: _Optional[float] = ..., account_equity: _Optional[float] = ..., entry_price: _Optional[float] = ..., stop_loss_price: _Optional[float] = ...) -> None: ...
 
 class SizePositionResponse(_message.Message):
-    __slots__ = ("units", "calibrated_probability", "target_volatility", "sizing_model_version")
+    __slots__ = ("units", "calibrated_probability", "target_volatility", "sizing_model_version", "risk_amount", "caps_applied", "prob_scale")
     UNITS_FIELD_NUMBER: _ClassVar[int]
     CALIBRATED_PROBABILITY_FIELD_NUMBER: _ClassVar[int]
     TARGET_VOLATILITY_FIELD_NUMBER: _ClassVar[int]
     SIZING_MODEL_VERSION_FIELD_NUMBER: _ClassVar[int]
+    RISK_AMOUNT_FIELD_NUMBER: _ClassVar[int]
+    CAPS_APPLIED_FIELD_NUMBER: _ClassVar[int]
+    PROB_SCALE_FIELD_NUMBER: _ClassVar[int]
     units: float
     calibrated_probability: float
     target_volatility: float
     sizing_model_version: str
-    def __init__(self, units: _Optional[float] = ..., calibrated_probability: _Optional[float] = ..., target_volatility: _Optional[float] = ..., sizing_model_version: _Optional[str] = ...) -> None: ...
+    risk_amount: float
+    caps_applied: _containers.RepeatedScalarFieldContainer[str]
+    prob_scale: float
+    def __init__(self, units: _Optional[float] = ..., calibrated_probability: _Optional[float] = ..., target_volatility: _Optional[float] = ..., sizing_model_version: _Optional[str] = ..., risk_amount: _Optional[float] = ..., caps_applied: _Optional[_Iterable[str]] = ..., prob_scale: _Optional[float] = ...) -> None: ...
 
 class PredictRequest(_message.Message):
     __slots__ = ("instrument", "timeframe", "bar_ts", "features")

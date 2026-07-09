@@ -76,7 +76,7 @@ class FakeOanda:
 
     # ── request router ───────────────────────────────────────────────────────
 
-    def handle(self, request: httpx.Request) -> httpx.Response:  # noqa: PLR0911
+    def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         base = f"/v3/accounts/{self.account_id}"
         if path == f"{base}/summary":
@@ -199,7 +199,7 @@ class FakeOanda:
         price = PRICES[trade.instrument]
         pl = round((price - trade.price) * (units if trade.units > 0 else -units), 6)
         full_close = units >= abs(trade.units)
-        reduce_info = {
+        reduce_info: dict[str, Any] = {
             "tradeID": trade_id,
             "units": str(-units if trade.units > 0 else units),
             "price": str(price),
@@ -208,7 +208,7 @@ class FakeOanda:
         }
         # Faithful ORDER_FILL: full close → entry in tradesClosed; partial
         # close → tradeReduced, trade STAYS OPEN with reduced units.
-        fill = {
+        fill: dict[str, Any] = {
             "id": self._next_id(),
             "type": "ORDER_FILL",
             "reason": "MARKET_ORDER_TRADE_CLOSE",

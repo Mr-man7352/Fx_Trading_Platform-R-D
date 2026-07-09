@@ -16,7 +16,7 @@ import asyncpg
 
 from app.config import get_settings
 from app.execution.adapter import BrokerAdapter, BrokerError
-from app.execution.credentials import CredentialError, load_broker_credentials, parse_encryption_key
+from app.execution.credentials import load_broker_credentials, parse_encryption_key
 from app.execution.oanda_adapter import OandaAdapter
 
 if TYPE_CHECKING:
@@ -59,7 +59,7 @@ _cache_lock = asyncio.Lock()
 
 async def load_adapter() -> BrokerAdapter:
     """Load (and cache) the sole production adapter (OANDA)."""
-    global _cached_adapter  # noqa: PLW0603
+    global _cached_adapter
     async with _cache_lock:
         if _cached_adapter is None:
             factory = ADAPTER_FACTORIES["oanda"]
@@ -69,5 +69,5 @@ async def load_adapter() -> BrokerAdapter:
 
 def reset_adapter_cache() -> None:
     """Drop the cached adapter (call after BrokerError → next RPC reconnects)."""
-    global _cached_adapter  # noqa: PLW0603
+    global _cached_adapter
     _cached_adapter = None

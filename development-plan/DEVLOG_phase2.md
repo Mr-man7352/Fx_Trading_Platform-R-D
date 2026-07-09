@@ -1,5 +1,12 @@
 # DEVLOG — Phase 2 (Execution & Quant)
 
+> **ARCHIVE (Phase 2 complete, 2026-07-09).** This file is now the frozen
+> Phase-2 record; live development continues in
+> [`DEVLOG_current.md`](DEVLOG_current.md) (Phase 3 — Intelligence). The
+> Standing decisions + Conventions below are carried forward into the Phase-3
+> log as the single live source of truth. Pre-Phase-3 test plan:
+> [`PHASE2_TESTING_GUIDE.md`](PHASE2_TESTING_GUIDE.md).
+
 Continuation of [`DEVLOG-phase1.md`](DEVLOG-phase1.md) (the Phase-1 record —
 per-step build history lives there). The Phase-1 **Standing decisions** and
 **Conventions** are carried forward in full below as the *current* standing
@@ -16,32 +23,50 @@ quant pipeline emits calibrated, sized candidates; baseline logging P&L.
 
 ---
 
-## Current state (updated 2026-07-07)
+## Current state (updated 2026-07-08)
 
-- **Done (Phase 2):** Step 2.1 (QN-030…034) + **Step 2.2** (BE-050…053): execution
-  worker + order lifecycle, trade manager (+1R partial/breakeven/trail), 60s
-  reconciler, off-host watchdog. ExecutionService gRPC seam (Python → OANDA adapter,
-  Node `quant-client.ts`). BE-054 (trades REST) deferred to Phase 5.
-  **2026-07-07 audit + fix pass applied on top** (see entry): reconciler txn
-  mapping rebuilt on tradesClosed/tradeReduced, since-id bootstrap fixed,
-  watchdog de-zodded + degraded-alerting + re-arm, adapter caching, compose/stack
-  worker services, real worker test suites.
+- **Done (Phase 2):** Step 2.1 (QN-030…034), **Step 2.2** (BE-050…053, audited
+  + fixed 2026-07-07), and **Step 2.3** (QN-040…048): deterministic quant core —
+  point-in-time features + DST-aware sessions/rollover/gap flags, HMM trend +
+  liquidity regime, LightGBM meta-model with walk-forward calibration +
+  model registry (champion/challenger + drift monitor), vol-target/Kelly/FCA
+  sizing (+ QN-044 flag), shadow baseline, correlation clustering with
+  event-triggered refresh. QuantService gRPC RPCs (RunPipeline/SizePosition/
+  Predict) are now REAL — the QN-004 UNIMPLEMENTED stubs are gone.
+  BE-054 (trades REST) deferred to Phase 5.
 - **Done (Phase-1 cross-cutting):** BE-140/141/142 (OTel, Grafana, backups).
+- **Known issue / TODO (2026-07-09, defer):** first trained model
+  `XAU_USD/H1 v1` has **no predictive edge** — OOF AUC 0.51 (coin flip),
+  brier_cal 0.23, trained on only ~6 months / 2,121 candidates. It is a
+  plumbing/smoke-test artifact only; do NOT treat as tradeable. **Fix later:
+  retrain on more history** (`BACKFILL_MONTHS` ≥ 18, H1) once Section E flow is
+  validated. Also the regime HMM logged non-convergence on this small sample,
+  so `regime_fold_stability` (0.52) is unreliable here.
 - **Pending human actions:**
-  1. **Prisma migration** — schema adds `trade_intents.reason_code`, `intent_status.executed`.
-     Local DB has migration drift (timescale indexes); run:
+  1. **Prisma migration** — schema adds `model_registry` + `correlation_clusters`
+     (Step 2.3) ON TOP of the still-unapplied Step-2.2 changes
+     (`trade_intents.reason_code`, `intent_status.executed`). Local DB has
+     migration drift (timescale indexes); run:
      `pnpm --filter @fx/node-api exec prisma migrate reset` then
-     `pnpm --filter @fx/node-api exec prisma migrate dev --name step_2_2_order_lifecycle`
+     `pnpm --filter @fx/node-api exec prisma migrate dev --name step_2_3_quant_core`
      (dev-only; destructive).
-  2. `pnpm test` / `pnpm typecheck` / `pnpm lint` at root — the 2026-07-07 fix
-     pass typechecked everything in the sandbox but could NOT execute Vitest
-     there; `cd services/quant && uv run pytest` to re-verify 101/101 on 3.13.
-  3. Paper round-trip smoke against real OANDA practice account (or FakeOanda path
-     documented below — NOT verified against live OANDA in this session).
-  4. Deploy watchdog off-host per `workers/watchdog/README.md`.
-  5. Carried over: `/dashboard` visual check; `git push --force-with-lease` after
-     2026-07-05 history rewrite.
-- **Next:** Step 2.3 — deterministic quant core (QN-040…048).
+  2. **Quant deps:** `cd services/quant && uv lock && uv sync --dev` — Step 2.3
+     added numpy/pandas/scipy/scikit-learn/lightgbm/hmmlearn/ta-lib (ta-lib
+     0.6+ wheels bundle the C library; if a wheel is missing for macOS/py3.13,
+     `brew install ta-lib` first). Then `uv run pytest` (expect 230),
+     `uv run mypy .`, `uv run ruff check .` on 3.13.
+  3. `pnpm test` / `pnpm typecheck` / `pnpm lint` at root — Vitest still not
+     executable in the sandbox (carried from 2.2; no Node code changed in 2.3).
+  4. Paper round-trip smoke against real OANDA practice account (carried).
+  5. Deploy watchdog off-host per `workers/watchdog/README.md` (carried).
+  6. Carried over: `/dashboard` visual check; `git push --force-with-lease`
+     after 2026-07-05 history rewrite.
+  7. **When ready to trade on the model:** backfill history (QN-021 CLI), then
+     `uv run python -m app.quant train --instrument EUR_USD --timeframe H1`,
+     let it shadow ≥100 bars, then `… promote --version N`. Until a champion is
+     promoted, RunPipeline deterministically returns has_candidate=false (HOLD).
+- **Next:** Phase-2 remainder — Node risk gate + breaker (BE-068, BE-070…073,
+  consuming QN-048 clusters + P≥0.60 gate), then Phase 3 agents.
 
 ## Standing decisions (carried from Phase 1 — don't re-litigate without cause)
 
@@ -282,6 +307,93 @@ broken against the real venue) plus coverage/robustness gaps. All fixed:
   `scripts/gen_proto.py`. NOT verified: Vitest execution (darwin natives —
   run `pnpm test` on the Mac), pytest on 3.13, biome, prisma migrate, real
   OANDA round-trip.
+
+### 2026-07-08 — Step 2.3: Deterministic quant core (QN-040…048)
+
+New package `services/quant/app/quant/` — everything deterministic (fixed
+seeds, trailing-window-only computations, point-in-time joins); no LLM ever
+touches it (§10).
+
+- **QN-040/047 `features.py` + `sessions.py`:** `indicator_frame` is THE single
+  TA-Lib implementation (pipeline + validation scripts call the same function —
+  parity AC unit-tested); returns/vol, EMA/RSI/ATR/NATR/ADX/MACD/BBands/ROC,
+  prior-Donchian S/R distances in ATR units, candle anatomy, volume z-score;
+  macro join via `merge_asof(release_ts <= bar_ts)`, sentiment via
+  `published_at <= bar_ts` windows, spread as-of join + causal trailing
+  percentile. Sessions defined EXCHANGE-LOCAL via IANA tz (Tokyo 09–18 JST,
+  London 08–16:30 local, NY 08–17 local; OVERLAP = London∩NY); rollover +
+  Friday close anchored 17:00 America/New_York; `triple_swap_day`,
+  `weekend_gap_window`, spread multipliers (OFF_HOURS/Tokyo 1.5×). DST
+  regression tests cover summer/winter for label, rollover (21:00/22:00 UTC)
+  and gap window. **No-look-ahead test:** prefix-computed features must equal
+  full-series rows exactly. `partition_features` → technical/macro/sentiment
+  by prefix (exactly-once AC tested). `FEATURE_SET_VERSION = 1`.
+- **QN-041 `regime.py`:** 3-state GaussianHMM over [ret, rolling vol], refit
+  per run on the trailing window (seeded ⇒ deterministic); states → labels by
+  scale-relative mean sign (HMM may split one drift phase across states — a
+  plain argsort mapping mislabels; found by test). Posterior entropy at last
+  bar (causal: smoothing == filtering at the final step) → debate rounds
+  0/1/2. `fold_stability` (adjusted Rand on overlapping folds) recorded into
+  model metrics at each train. Liquidity regime SEPARATE: spread pctile ≥0.8
+  or volume pctile ≤0.2 ⇒ LOW; ≤0.3 & ≥0.6 ⇒ HIGH; missing data ⇒ NORMAL.
+- **QN-042/044 `sizing.py`:** ladder (each rung only shrinks): 1% hard risk
+  ceiling → fractional-Kelly cap (f*=p−(1−p)/b, b=min R:R 1.8; ≤0 ⇒ 0 units)
+  → ATR vol-target (1×ATR ≈ `vol_risk_pct` equity, default 0.5%) → QN-044
+  prob scaling (flag off by default; 0.5× @P=0.60 → 1× @P≥0.75) → FCA leverage
+  (30:1 majors / 20:1 minors+XAU / 10:1 oil; broker margin_rate may only
+  tighten) → unit-step floor. Builds on QN-034 primitives; GBP-account
+  fixtures; caps recorded in `caps_applied` for audit.
+- **QN-043 `labels.py`/`model.py`/`registry.py` + train CLI:** labels = bracket
+  sim of the platform's own geometry (1×ATR stop, rr×ATR target, SL-first on
+  same-bar touch, cost haircut, NaN tails). Walk-forward LightGBM (expanding
+  folds, embargo = horizon; fold bounds recorded and unit-tested — no future
+  data in any training fold), calibration on OOF only (isotonic ≥300 rows,
+  else Platt), reliability curve + ECE/Brier/AUC persisted. Calibrators are
+  JSON (no pickle). Artifacts: `var/models/<inst>/<tf>/vN/{model.txt,
+  calibrator.json,metadata.json}` (gitignored); roles live in the new
+  `model_registry` table. **Train-on-demand policy (user decision):** no
+  committed model; no champion ⇒ RunPipeline emits features/regime/baseline
+  but `has_candidate=false` (deterministic HOLD, ADR-010).
+  CLI: `python -m app.quant train|promote|clusters`.
+- **QN-046:** new models ALWAYS register as challenger; pipeline shadow-scores
+  the newest challenger each bar (`shadow_count` bumped); `promote` refuses
+  below `min_shadow=100` without `--force`; old champion → retired.
+  `calibration_drift` (recent ECE > 0.08 or Brier > 1.2× training) → alert.
+- **QN-045 `baseline.py`:** trend (EMA20/50 spread + ADX≥20) + vol-breakout
+  (prior-Donchian break + range ≥1.2×ATR); conflict ⇒ stand down. Row written
+  to `baseline_signals` on EVERY pipeline bar in EVERY mode. In Phase 2 the
+  baseline doubles as THE candidate generator — the meta-model is trained on
+  and scores exactly these candidates (agents refine in Phase 3).
+  `comparison_metric` = baseline expectancy (R) vs agent-trade R.
+- **QN-048 `clusters.py`:** |Pearson|, average-linkage, cut at 1−0.7; weekly
+  refresh + event triggers (liquidity-regime transition, realized-vol spike
+  >2× trailing median). Event recomputes use a SHORT window (20d vs 60d) so
+  fresh convergence isn't averaged away — the risk-off fixture proves the
+  event path clusters EUR/GBP while the 60d weekly window still wouldn't.
+  Versioned rows in new `correlation_clusters` table (BE-071 consumes latest).
+- **Seams:** `pipeline.py` orchestrates per-bar; `dbio.py` (QuantDb) owns all
+  SQL; `app/grpc/servicer.py` implements RunPipeline/SizePosition/Predict with
+  cached runtime (mirrors execution factory). Proto: Candidate gained bracket
+  zones; RunPipelineResponse gained session/liquidity/trend labels, entropy,
+  debate_rounds, challenger_probability; SizePositionResponse gained
+  risk_amount/caps_applied/prob_scale (additive — Node loads the proto
+  dynamically, no Node change needed). Errors: FAILED_PRECONDITION (no DB /
+  short history / no champion) | INVALID_ARGUMENT | INTERNAL — breaker ⇒ HOLD.
+- **Schema:** `model_registry` + `correlation_clusters` in schema.prisma
+  (relational only — no timescale objects, so no timescale.sql change).
+- **Config/env:** ACCOUNT_CURRENCY, RISK_PER_TRADE_PCT (code-clamped to 1%),
+  VOL_RISK_PCT, KELLY_FRACTION, PROB_SIZING_ENABLED, MIN_RR,
+  PIPELINE_LOOKBACK_BARS, LABEL_HORIZON_BARS, MODEL_DIR, CORR_* — all in
+  `.env.example` (commented, defaults in code). pyproject: quant stack deps
+  added (ta-lib wheels bundle the C lib since 0.6); ruff
+  `allowed-confusables` for the house typography; mypy overrides for the
+  untyped numeric stack.
+- Verified: **230/230 pytest in the sandbox** (py3.10 venv + StrEnum/UTC
+  shims; includes 129 new Step-2.3 tests), `ruff check` clean, `mypy` clean
+  (app/quant, servicer, tests/quant), proto_gen regenerated with pinned
+  grpcio-tools 1.81.1. NOT verified: pytest/mypy on real 3.13, `uv lock`
+  (sandbox has no uv/pypi-full), prisma migrate, training on real backfilled
+  data, RunPipeline against a real DB.
 
 ---
 

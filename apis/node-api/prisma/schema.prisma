@@ -408,6 +408,55 @@ model BacktestRun {
   @@map("backtest_runs")
 }
 
+// ─── Step 2.3 quant core (QN-043/046/048) ────────────────────────────────────
+
+/// QN-043/QN-046 — meta-model registry. Artifacts (LightGBM model.txt,
+/// calibrator.json, metadata.json) live on the quant service filesystem at
+/// `artifactPath`; this table owns the champion/challenger ROLES. Python
+/// (services/quant/app/quant/registry.py) is the only writer. `role` is one
+/// of "champion" | "challenger" | "retired" — text, not an enum, so the
+/// Python state machine can evolve without a migration.
+model ModelRegistryEntry {
+  id                String    @id @default(uuid()) @db.Uuid
+  instrument        String
+  timeframe         Timeframe
+  version           Int
+  role              String    @default("challenger")
+  calibrationMethod String    @map("calibration_method")
+  featureSetVersion Int       @map("feature_set_version")
+  trainedAt         DateTime  @map("trained_at") @db.Timestamptz(6)
+  metrics           Json?
+  artifactPath      String    @map("artifact_path")
+  shadowCount       Int       @default(0) @map("shadow_count")
+  lastShadowAt      DateTime? @map("last_shadow_at") @db.Timestamptz(6)
+  promotedAt        DateTime? @map("promoted_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([instrument, timeframe, version])
+  @@index([instrument, timeframe, role])
+  @@map("model_registry")
+}
+
+/// QN-048 — versioned correlation clusters, published by Python, consumed by
+/// the Node risk gate (BE-071 max-correlated-exposure cap). Previous versions
+/// are retained for audit; consumers read the highest `version`. `clusters`
+/// is a JSON array of arrays of instrument names; `trigger` is one of
+/// "weekly" | "liquidity_transition" | "vol_spike" | "manual" | "bootstrap".
+model CorrelationClusterSet {
+  id           String   @id @default(uuid()) @db.Uuid
+  version      Int      @unique
+  computedAt   DateTime @map("computed_at") @db.Timestamptz(6)
+  trigger      String
+  lookbackDays Int      @map("lookback_days")
+  threshold    Float
+  clusters     Json
+  params       Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([computedAt])
+  @@map("correlation_clusters")
+}
+
 // ─── §7.3 Auth & compliance ──────────────────────────────────────────────────
 
 enum UserRole {

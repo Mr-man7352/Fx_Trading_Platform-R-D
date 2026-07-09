@@ -40,6 +40,10 @@ ARG GIT_COMMIT=dev
 ENV PYTHONUNBUFFERED=1 \
     GIT_COMMIT=${GIT_COMMIT} \
     PATH="/app/.venv/bin:${PATH}"
+# libgomp1 = OpenMP runtime required by LightGBM's native lib (libgomp.so.1).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgomp1 \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=talib-build /usr/local/lib/libta-lib* /usr/local/lib/
 COPY --from=talib-build /usr/local/include/ta-lib /usr/local/include/ta-lib
 RUN ldconfig

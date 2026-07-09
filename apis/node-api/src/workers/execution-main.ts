@@ -67,6 +67,17 @@ const executionWorker = new Worker<ExecutionJob>(
   { connection: bullConnection, concurrency: 2, telemetry },
 );
 
+// Lifecycle visibility for the execution queue (dev debugging).
+executionWorker.on('active', (job) => console.log(`[exec] active job ${job.id}`));
+executionWorker.on('completed', (job) => console.log(`[exec] completed job ${job.id}`));
+executionWorker.on('failed', (job, err) =>
+  console.error(`[exec] FAILED job ${job?.id} attempt ${job?.attemptsMade}:`, err),
+);
+executionWorker.on('error', (err) => console.error('[exec] worker error:', err));
+executionWorker.on('ready', () =>
+  console.log(`[exec] worker ready — listening on '${EXECUTION_QUEUE}'`),
+);
+
 const tradeManagerWorker = new Worker(
   TRADE_MANAGER_QUEUE,
   async (job) => {

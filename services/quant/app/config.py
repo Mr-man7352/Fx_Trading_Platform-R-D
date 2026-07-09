@@ -71,6 +71,26 @@ class Settings(BaseSettings):
     backfill_months: int = 6
     backfill_granularity: str = "M1"
 
+    # ── Step 2.3 deterministic quant core (QN-040…048) ──
+    # Sizing (QN-042/044). risk_per_trade_pct is additionally clamped to the
+    # 1% hard ceiling in code regardless of what the env says (design §10).
+    account_currency: str = "GBP"
+    risk_per_trade_pct: float = 0.01
+    vol_risk_pct: float = 0.005
+    kelly_fraction: float = 0.25
+    prob_sizing_enabled: bool = False  # QN-044 flag
+    min_rr: float = 1.8
+    # Pipeline + model registry (QN-040/043/046).
+    pipeline_lookback_bars: int = 500
+    label_horizon_bars: int = 24
+    model_dir: Path = Path(__file__).resolve().parent.parent / "var" / "models"
+    # Correlation clustering (QN-048) — defaults match system design §10.
+    corr_lookback_days: int = 60
+    corr_threshold: float = 0.7
+    corr_refresh_days: int = 7
+    corr_event_lookback_days: int = 20
+    corr_vol_spike_mult: float = 2.0
+
     @property
     def instruments(self) -> list[str]:
         return [s.strip() for s in self.market_instruments.split(",") if s.strip()]

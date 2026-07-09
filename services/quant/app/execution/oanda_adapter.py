@@ -24,6 +24,7 @@ import httpx
 
 from app.execution.adapter import BrokerError
 from app.execution.models import (
+    Broker,
     BrokerPosition,
     BrokerTradeRecord,
     BrokerTransaction,
@@ -54,7 +55,7 @@ def _num(value: Any, default: float = 0.0) -> float:
 class OandaAdapter:
     """BrokerAdapter implementation for OANDA v20 (see adapter.py contract)."""
 
-    broker = "oanda"
+    broker: Broker = "oanda"
 
     def __init__(
         self,

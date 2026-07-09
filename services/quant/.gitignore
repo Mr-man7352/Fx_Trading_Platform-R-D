@@ -4,3 +4,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
+# Step 2.3 — trained model artifacts (QN-043 registry); DB carries the roles,
+# artifacts are operator-local (back up via BE-142 host backups, not git).
+var/

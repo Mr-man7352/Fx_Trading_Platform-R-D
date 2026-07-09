@@ -9,7 +9,7 @@ behavior (validators, signed-units helpers) the codegen output can't carry;
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 — pydantic needs the runtime type
+from datetime import datetime
 from typing import Literal
 from uuid import uuid4
 

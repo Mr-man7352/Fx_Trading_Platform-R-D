@@ -12,7 +12,7 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 ## Current state (updated 2026-07-05)
 
 - **Done:** Phase 1 → Step 1.1 (monorepo & shared packages), Step 1.2 (local stack, CI/CD, deploy), Step 1.3 (Fastify bootstrap, BE-010…015), Step 1.4 (DB schema: BE-020…023, BE-130, BE-131), Step 1.5 (quant scaffold: QN-001…005; `uv.lock` now committed in c909a00), Step 1.6 (market data ingestion: QN-020…022, BE-040…045), Step 1.7 (design system: FE-010, FE-011 + FE-110 banner — see entry).
-- **Phase 1 is code-complete** (cross-cutting BE-140…142 obs/backup epics still open, deliberately deferred). **Phase 2 entries go in [`DEVLOG-phase2.md`](DEVLOG-phase2.md)** — this file stays as the Phase-1 record; keep this Current state block updated only until the Phase-2 log takes over.
+- **Phase 1 is code-complete** (cross-cutting BE-140…142 obs/backup epics still open, deliberately deferred). **Phase 2 entries go in [`DEVLOG_phase2.md`](DEVLOG_phase2.md)** — this file stays as the Phase-1 record; keep this Current state block updated only until the Phase-2 log takes over.
 - **⚠️ Steps 1.6 + 1.7 need human actions (sandbox could not run installers/tests):**
   1. `pnpm install` — Step 1.6 added `bullmq` + `ioredis` to `@fx/node-api`;
      Step 1.7 added the new `packages/ui` workspace (radix, cva, clsx,
@@ -34,7 +34,7 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
   4. Optional, to exercise live venues: set `OANDA_API_TOKEN`/`OANDA_ACCOUNT_ID`
      (practice), `TWELVE_DATA_API_KEY`, `FRED_API_KEY`, `EIA_API_KEY`.
 - **Next:** Phase 2 → Step 2.1 — Broker abstraction & execution adapters
-  (QN-030, QN-032…034; QN-031 optional). Log it in `DEVLOG-phase2.md`.
+  (QN-030, QN-032…034; QN-031 optional). Log it in `DEVLOG_phase2.md`.
   Cross-cutting obs/backup epics (BE-140…142) still open.
 - **First CI run after Step 1.4:** watch the new `migrations` job — the init
   migration was hand-authored (see entry below); the drift check will flag any
@@ -48,7 +48,7 @@ stories in `development-plan/FX_Stories_*.md`, architecture in
 ## Standing decisions (don't re-litigate without cause)
 
 > **These have moved.** As of Phase 2, the *current* Standing decisions +
-> Conventions live in [`DEVLOG-phase2.md`](DEVLOG-phase2.md) as the single
+> Conventions live in [`DEVLOG_phase2.md`](DEVLOG_phase2.md) as the single
 > source of truth. The copy below is the Phase-1 historical snapshot — read the
 > Phase-2 log for the live version.
 

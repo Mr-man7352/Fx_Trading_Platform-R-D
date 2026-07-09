@@ -18,6 +18,13 @@ import httpx
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+# Internal timeframe codes → OANDA v20 granularity codes. Most are identical
+# (M1, M5, M15, H1, H4…), but OANDA uses D/W/M for daily/weekly/monthly where
+# this project's `timeframe` enum uses D1/W1/MN1 — passing "D1" straight through
+# yields HTTP 400 (invalid granularity). Candles are still STORED under the
+# internal code so dbio / the clusters query keep finding them.
+_OANDA_GRANULARITY = {"D1": "D", "W1": "W", "MN1": "M"}
+
 
 def _parse_time(raw: str) -> datetime:
     """OANDA RFC3339 with nanoseconds → aware UTC datetime (ns truncated to µs)."""
@@ -132,7 +139,7 @@ class OandaClient:
         """One page of mid candles from `from_time` forward (≤ 5,000, OANDA cap)."""
         params = {
             "price": "M",
-            "granularity": granularity,
+            "granularity": _OANDA_GRANULARITY.get(granularity, granularity),
             "from": from_time.astimezone(UTC).isoformat().replace("+00:00", "Z"),
             "count": str(min(count, 5000)),
             "includeFirst": str(include_first).lower(),

@@ -1,4 +1,10 @@
-"""QN-001/QN-004 — gRPC health RPC serves; QuantService RPCs are UNIMPLEMENTED."""
+"""QN-001/QN-004 — gRPC health RPC serves; Step 2.3 error mapping.
+
+QuantService RPCs are implemented since Step 2.3; without a DATABASE_URL (the
+scaffold test environment) they fail FAILED_PRECONDITION / INVALID_ARGUMENT —
+never UNIMPLEMENTED, and never OK. The Node breaker (BE-068) treats any
+non-OK as HOLD. Full behavioural coverage lives in tests/quant/.
+"""
 
 from __future__ import annotations
 
@@ -27,15 +33,33 @@ def test_health_check_serving(channel: grpc.Channel) -> None:
         assert response.status == health_pb2.HealthCheckResponse.SERVING
 
 
-def test_quant_rpcs_are_unimplemented(channel: grpc.Channel) -> None:
+def test_run_pipeline_without_db_is_failed_precondition(
+    channel: grpc.Channel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.config import get_settings
+
+    monkeypatch.setenv("DATABASE_URL", "")  # a repo .env may set it — force off
+    get_settings.cache_clear()
     stub = quant_pb2_grpc.QuantServiceStub(channel)
-    calls = [
-        (stub.RunPipeline, quant_pb2.RunPipelineRequest(instrument="EUR_USD")),
-        (stub.SizePosition, quant_pb2.SizePositionRequest(instrument="EUR_USD")),
-        (stub.Predict, quant_pb2.PredictRequest(instrument="EUR_USD")),
-    ]
-    for method, request in calls:
-        with pytest.raises(grpc.RpcError) as excinfo:
-            method(request, timeout=5)
-        assert excinfo.value.code() == grpc.StatusCode.UNIMPLEMENTED
-        assert "Phase 2" in excinfo.value.details()
+    request = quant_pb2.RunPipelineRequest(
+        instrument="EUR_USD", timeframe=quant_pb2.TIMEFRAME_H1
+    )
+    with pytest.raises(grpc.RpcError) as excinfo:
+        stub.RunPipeline(request, timeout=10)
+    assert excinfo.value.code() == grpc.StatusCode.FAILED_PRECONDITION
+    assert "DATABASE_URL" in excinfo.value.details()
+
+
+def test_size_position_rejects_bad_arguments(channel: grpc.Channel) -> None:
+    stub = quant_pb2_grpc.QuantServiceStub(channel)
+    with pytest.raises(grpc.RpcError) as excinfo:
+        stub.SizePosition(quant_pb2.SizePositionRequest(instrument="EUR_USD"), timeout=10)
+    assert excinfo.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+
+
+def test_predict_requires_features(channel: grpc.Channel) -> None:
+    stub = quant_pb2_grpc.QuantServiceStub(channel)
+    request = quant_pb2.PredictRequest(instrument="EUR_USD", timeframe=quant_pb2.TIMEFRAME_H1)
+    with pytest.raises(grpc.RpcError) as excinfo:
+        stub.Predict(request, timeout=10)
+    assert excinfo.value.code() == grpc.StatusCode.INVALID_ARGUMENT

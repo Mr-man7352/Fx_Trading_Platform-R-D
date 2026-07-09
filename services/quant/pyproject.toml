@@ -1,6 +1,7 @@
 # QN-001 — Quant service scaffold (FastAPI + gRPC). uv-managed, Python 3.13.
-# Heavy quant deps (pandas, TA-Lib, lightgbm, vectorbt, …) arrive with their
-# stories (QN-02x/QN-04x); keep the scaffold lean so `uv sync` stays fast.
+# Step 2.3 (QN-040…048) pulled in the quant stack: pandas/numpy, TA-Lib
+# (0.6+ wheels bundle the C library — no system install needed), LightGBM,
+# hmmlearn, scikit-learn, scipy. vectorbt still arrives with QN-05x.
 [project]
 name = "fx-quant"
 version = "0.1.0"
@@ -24,6 +25,14 @@ dependencies = [
   "opentelemetry-instrumentation-fastapi>=0.48b0",
   "opentelemetry-instrumentation-grpc>=0.48b0",
   "opentelemetry-instrumentation-httpx>=0.48b0",
+  # Step 2.3 — deterministic quant core (QN-040…048).
+  "numpy>=2.0",
+  "pandas>=2.2",
+  "scipy>=1.14",            # QN-048 hierarchical clustering
+  "scikit-learn>=1.5",      # QN-043 calibration, QN-041 stability metric
+  "lightgbm>=4.5",          # QN-043 meta-model
+  "hmmlearn>=0.3.3",        # QN-041 regime HMM
+  "ta-lib>=0.6",            # QN-040 indicators (binary wheels incl. C lib)
   "fx-common",
 ]
 
@@ -69,6 +78,9 @@ extend-exclude = ["app/contracts", "app/proto_gen"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# House style: docstrings/comments use ×, −, – (e.g. "1×ATR", "p − (1−p)/b")
+# — deliberate typography, not confusable typos.
+allowed-confusables = ["×", "−", "–"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -95,6 +107,19 @@ module = ["bullmq.*", "asyncpg.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# Step 2.3 quant stack — no (usable) type stubs published/installed.
+module = ["talib.*", "lightgbm.*", "hmmlearn.*", "sklearn.*", "scipy.*", "pandas.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Step 2.3 quant core — pandas/numpy-heavy numerical code; strict-mode value
+# is low and stub friction high (same treatment as app.grpc.*).
+module = ["app.quant.*"]
+disallow_untyped_decorators = false
+warn_return_any = false
+disable_error_code = ["no-untyped-call", "no-any-return"]
+
+[[tool.mypy.overrides]]
 # BE-140 — instrumentation packages ship no py.typed; imported lazily.
 module = ["opentelemetry.*"]
 ignore_missing_imports = true
@@ -105,6 +130,15 @@ module = ["tests.*", "app.grpc.*"]
 disallow_untyped_decorators = false
 warn_return_any = false
 disable_error_code = ["no-untyped-call", "no-any-return"]
+
+[[tool.mypy.overrides]]
+# Step 2.3 quant tests — pandas/lightgbm fixture plumbing; annotating every
+# fixture tuple adds noise, not safety (runtime coverage is the contract here).
+module = ["tests.quant.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disable_error_code = ["no-untyped-call", "no-any-return", "type-arg", "no-untyped-def"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "libs/fx_common/tests"]

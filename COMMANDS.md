@@ -95,6 +95,10 @@ If the DB is fresh or was wiped, seed it once before `pnpm debug`:
 pnpm db:deploy && pnpm db:timescale && pnpm seed:dev
 ```
 
+```bash
+docker compose -f infra/docker-compose.local.yml stop quant worker-execution worker api  # stop backing services (keep DB + Redis)
+```
+
 Notes:
 
 - Local API/dashboard logs appear in **your terminal**, not Dozzle. Dozzle shows db, redis, quant, worker.

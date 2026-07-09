@@ -1,7 +1,6 @@
 // QN-004 — gRPC service definitions for the quant hot path.
-// Step 1.5 ships definitions + UNIMPLEMENTED servicers; real implementations
-// land in Phase 2 (Predict QN-042, SizePosition QN-043, RunPipeline QN-046).
-// Message shapes are provisional until those stories — evolve fields there.
+// Step 2.3 implemented the QuantService RPCs (RunPipeline QN-040…048,
+// SizePosition QN-042/044, Predict QN-043/046) — shapes are live now.
 //
 // Codegen: `uv run python scripts/gen_proto.py` → app/proto_gen/ (committed;
 // CI drift-checks). TS stubs for Node workers arrive with BE-068 (Phase 2).
@@ -56,6 +55,11 @@ message Candidate {
   double probability = 3;   // calibrated P(profitable), 0..1
   string regime = 4;        // HMM + liquidity regime label
   string model_version = 5;
+  // Bracket zones (QN-043): the probability is calibrated for EXACTLY this
+  // geometry (1×ATR stop, min-R:R target — same sim that labelled training).
+  double entry_price = 6;
+  double stop_loss_price = 7;
+  double take_profit_price = 8;
 }
 
 message RunPipelineResponse {
@@ -63,6 +67,16 @@ message RunPipelineResponse {
   // false → HOLD: the deterministic entry gate (ADR-010) skips agents entirely.
   bool has_candidate = 2;
   Candidate candidate = 3;
+  // QN-040/041/047 context for the risk gate + context assembler (BE-074).
+  string session_label = 4;      // TOKYO|LONDON|NEW_YORK|OVERLAP|OFF_HOURS
+  string liquidity_regime = 5;   // HIGH|NORMAL|LOW (distinct from trend regime)
+  string trend_regime = 6;       // TREND_UP|TREND_DOWN|RANGE
+  double regime_entropy = 7;     // 0..1 — drives debate depth
+  int32 debate_rounds = 8;       // 0|1|2 (design §9.4 mapping)
+  int32 feature_set_version = 9;
+  // Newest challenger's shadow score for the same candidate (QN-046); unset
+  // when there is no challenger or no candidate.
+  optional double challenger_probability = 10;
 }
 
 message SizePositionRequest {
@@ -75,10 +89,14 @@ message SizePositionRequest {
 }
 
 message SizePositionResponse {
-  double units = 1;                  // position size in units (always > 0; side is explicit)
+  double units = 1;                  // position size in units (0 ⇒ no trade; side is explicit)
   double calibrated_probability = 2;
-  double target_volatility = 3;      // annualised vol target used
+  double target_volatility = 3;      // per-trade vol-target risk fraction used (QN-042)
   string sizing_model_version = 4;
+  // Audit trail (QN-042/044): account-ccy risk at the stop + which caps bound.
+  double risk_amount = 5;
+  repeated string caps_applied = 6;
+  double prob_scale = 7;             // QN-044 modulation factor (1.0 when flag off)
 }
 
 message PredictRequest {

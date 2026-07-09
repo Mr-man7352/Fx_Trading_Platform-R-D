@@ -35,16 +35,22 @@ export async function processExecutionJob(
   job: Job<{ intentId: string }>,
 ): Promise<void> {
   const { intentId } = job.data;
+  console.log(`[exec] job ${job.id} received intentId=${intentId}`);
   const intent = await deps.prisma.tradeIntent.findUnique({ where: { id: intentId } });
   if (!intent) {
-    console.warn(`execution: intent ${intentId} not found`);
+    console.warn(`[exec] intent ${intentId} not found — nothing to do`);
     return;
   }
+  console.log(
+    `[exec] intent ${intentId} status=${intent.status} ${intent.side} ${intent.units} ${intent.instrument}`,
+  );
   if (intent.status !== 'approved' && intent.status !== 'submitted') {
+    console.log(`[exec] intent ${intentId} not actionable (status=${intent.status}) — skipping`);
     return; // idempotent — already terminal or in-flight handled
   }
 
   if (await isExecutionHalted(deps.redis)) {
+    console.warn(`[exec] execution HALTED — cancelling intent ${intentId}`);
     await deps.prisma.tradeIntent.update({
       where: { id: intentId },
       data: { status: 'cancelled', reasonCode: 'halted', decidedAt: new Date() },
@@ -71,6 +77,9 @@ export async function processExecutionJob(
 
   let result: PlaceOrderResult;
   try {
+    console.log(
+      `[exec] → gRPC PlaceOrder target=${deps.env.QUANT_GRPC_URL} intent=${intentId} units=${Number(intent.units)}`,
+    );
     result = await deps.quant.placeOrder({
       clientOrderId: intent.id,
       instrument: intent.instrument,
@@ -79,8 +88,16 @@ export async function processExecutionJob(
       stopLossPrice: Number(intent.stopLoss),
       takeProfitPrice: intent.takeProfit ? Number(intent.takeProfit) : undefined,
     });
+    console.log(
+      `[exec] ← gRPC PlaceOrder ok intent=${intentId} status=${result.status} broker=${result.broker} tradeId=${result.brokerTradeId} filled=${result.filledUnits}@${result.fillPrice}`,
+    );
   } catch (err) {
     if (isUnknownOutcome(err)) {
+      // gRPC failed after send (quant service down / timeout) — outcome unknown.
+      // Previously silent; log loudly so it's visible during testing.
+      console.error(
+        `[exec] gRPC PlaceOrder UNKNOWN OUTCOME intent=${intentId} — quant service unreachable at ${deps.env.QUANT_GRPC_URL}? Intent stays 'submitted' for the reconciler. err=${String(err)}`,
+      );
       await writeWorkerAudit(deps.prisma, deps.env.TRADING_MODE, {
         action: 'unknown_outcome',
         entityType: 'trade_intent',
@@ -89,15 +106,19 @@ export async function processExecutionJob(
       });
       return; // stays submitted — reconciler resolves
     }
+    console.error(`[exec] gRPC PlaceOrder THREW intent=${intentId} — job will fail/retry`, err);
     throw err;
   }
 
   if (result.status === 'REJECTED') {
+    console.warn(`[exec] order REJECTED intent=${intentId} reason=${result.reasonCode}`);
     await handleRejection(deps, intentId, result.reasonCode ?? 'REJECTED');
     return;
   }
 
+  console.log(`[exec] order FILLED intent=${intentId} — persisting trade`);
   await handleFill(deps, intent, result);
+  console.log(`[exec] done intent=${intentId}`);
 }
 
 async function handleRejection(

@@ -67,7 +67,7 @@ def setup_telemetry(app: FastAPI, settings: Settings) -> bool:
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     trace.set_tracer_provider(provider)
 
-    GrpcAioInstrumentorServer().instrument()
+    GrpcAioInstrumentorServer().instrument()  # type: ignore[no-untyped-call]
     HTTPXClientInstrumentor().instrument()
     FastAPIInstrumentor.instrument_app(app, excluded_urls="healthz")
 

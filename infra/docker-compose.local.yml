@@ -55,8 +55,27 @@ services:
       QUANT_GRPC_PORT: "50051"
       GIT_COMMIT: ${GIT_COMMIT:-local}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # BE-050/QN-032 — the ExecutionService gRPC plane loads the OANDA adapter
+      # by reading the seeded broker credentials from the DB and decrypting them
+      # with CREDENTIALS_ENCRYPTION_KEY. Without these three, PlaceOrder raises
+      # BrokerError → UNAVAILABLE and the Node worker silently records an
+      # unknown_outcome. Must match the api/worker blocks (same DB, same key).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
+      REDIS_URL: redis://redis:6379
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-ZGV2LW9ubHktY3JlZGVudGlhbHMta2V5LTMyYnl0ZXM=}
+      # practice ⇒ api-fxpractice.oanda.com; must match the environment the
+      # creds were seeded under (pnpm seed:creds). API token/account come from
+      # the DB, not these — kept here for the in-image market/backfill CLIs.
+      OANDA_ENVIRONMENT: ${OANDA_ENVIRONMENT:-practice}
+      OANDA_API_TOKEN: ${OANDA_API_TOKEN:-}
+      OANDA_ACCOUNT_ID: ${OANDA_ACCOUNT_ID:-}
       # BE-140 — empty ⇒ tracing off. In-network Tempo (observability profile).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "127.0.0.1:5001:5001"
       # gRPC — published for local debugging (grpcurl); workers use the

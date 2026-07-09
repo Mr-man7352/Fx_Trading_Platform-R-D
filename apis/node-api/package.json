@@ -9,6 +9,7 @@
     "worker:market-data": "tsx watch src/workers/main.ts",
     "worker:execution": "tsx watch src/workers/execution-main.ts",
     "enqueue-intent": "tsx scripts/enqueue-intent.ts",
+    "trip-signals": "tsx scripts/trip-signals.ts",
     "prebuild": "prisma generate",
     "build": "tsup src/server.ts src/workers/main.ts src/workers/execution-main.ts src/otel.ts --format esm --clean",
     "start": "node --import ./dist/otel.js dist/server.js",
