@@ -25,9 +25,13 @@ deterministic risk gate + kill-switch < 2 s.
   in [`PHASE2_TESTING_GUIDE.md`](PHASE2_TESTING_GUIDE.md). QuantService gRPC
   RPCs (RunPipeline/SizePosition/Predict) are REAL; shadow baseline runs every
   bar; train-on-demand policy holds (no champion ⇒ deterministic HOLD).
-- **Phase 3 not started** — nothing below built yet. First work is **Step 3.1**
-  (LLM plumbing: BE-060/061/068/069), then **Step 3.2** (agent graph), then
-  **Step 3.3** (risk gate & kill-switch).
+- **Step 3.1 (LLM plumbing) code-complete 2026-07-09** — BE-069 contracts in
+  `@fx/types` (agents.ts), BE-060/061 in new `packages/llm` (provider factory
+  + failover + prompt registry), BE-068 breaker + `QuantPipelineClient` in
+  `apis/node-api/src/signals/`. tsc-verified only; Vitest/pnpm install/prisma
+  generate+migrate are pending human actions (see the Step 3.1 entry).
+  Next: **Step 3.2** (agent graph), then **Step 3.3** (risk gate &
+  kill-switch).
 - **Carried-forward known issue (from Phase 2, defer):** first trained model
   `XAU_USD/H1 v1` has **no predictive edge** — OOF AUC 0.51, brier_cal 0.23,
   trained on only ~6 months / 2,121 candidates. Plumbing/smoke artifact only;
@@ -41,11 +45,10 @@ deterministic risk gate + kill-switch < 2 s.
   watchdog deploy; `/dashboard` visual check; commit + push the still-
   uncommitted Step 2.3 diff before growing the Phase-3 pile. See
   `PHASE2_TESTING_GUIDE.md` §3 for the full ordered plan.
-- **Next:** Step 3.1 — BE-069 (agent context contracts in `@fx/types`) first
-  (everything downstream validates against these), then BE-060 (LLM provider
-  factory + one-shot failover, 10 s cap), BE-061 (prompt registry + model
-  snapshot pinning), BE-068 (gRPC circuit breaker Node → Python; UNIMPLEMENTED /
-  breaker-open ⇒ HOLD, the seam already assumed since Phase 1).
+- **Next:** run the Step 3.1 pending human actions (install/build/migrate/
+  test — listed in the entry below), commit, then Step 3.2 — BE-074 context
+  assembler first (validates BE-069 contracts pre-invocation), then BE-062
+  LangGraph graph + BE-064 memory + BE-063 red-team + BE-065/066.
 
 ## Phase 3 scope (from `FX_PRD.md` §8 — build order)
 
@@ -159,6 +162,76 @@ deterministic risk gate + kill-switch < 2 s.
 ## Entries
 
 <!-- Append Phase 3 step entries below, newest first. -->
+
+### 2026-07-09 — Step 3.1: LLM plumbing (BE-069, BE-060, BE-061, BE-068)
+
+- **BE-069 — agent context contracts** (`packages/types/src/agents.ts` +
+  `agents.test.ts`): Zod input/output schemas for all 8 roles per §9.6
+  (3 specialists → bull/bear researchers → trader → risk team → PM), plus
+  `QuantCandidateSchema`/`PipelineContextSchema` (mirror proto
+  `RunPipelineResponse`), `RetrievedMemorySchema` (§9.5 slot, BE-064 fills),
+  `UntrustedNewsBlockSchema` (BE-063 injection boundary),
+  `DebateDigestSchema` (ADR-011 deterministic PM digest shape),
+  `HoldReasonSchema` (shared reason codes: GATE_SKIP, GRPC_TIMEOUT,
+  CIRCUIT_OPEN, NO_CHAMPION, SCHEMA_INVALID …), `AGENT_CONTRACT_VERSION`,
+  and `validateAgentOutput()` (returns `ok:false`, never throws → HOLD).
+  Outputs are `strictObject` (extra keys rejected); trader `direction`
+  required iff `action=ENTER`. **Deliberately NOT in `contractSchemas`** —
+  Node-internal; registering would churn the QN-003 Python codegen drift
+  check.
+- **BE-060 — provider factory** (new `packages/llm`, dep-light: raw fetch,
+  no SDKs): adapters for Anthropic/OpenRouter/OpenAI/Gemini (temp 0, JSON
+  mode where native, uniform error classification timeout/rate_limit/server/
+  fatal); `LlmClient` with §9.4 policy — primary under stage budget, then
+  **exactly one fallback (10s cap)**; 429 → capped exponential backoff THEN
+  failover; monthly cost cap ≥90% ⇒ non-PM down one capability tier, ≥95% ⇒
+  PM too; latency SLA (p95 >15s over 5 min + 2 consecutive slow) ⇒ reroute
+  via OpenRouter one tier down. Tiers are provider-agnostic
+  (`catalog.ts` maps tier→pinned snapshot; downgrades never name models).
+  Persistence seams: `LedgerSink`/`SpendProvider` interfaces — Prisma impls
+  in `apis/node-api/src/signals/llm-ledger.ts` (`agent_runs` IS the ledger;
+  MTD spend = indexed sum over `created_at`). **Catalog prices checked
+  2026-07-09** (Opus 4.8 $5/$25, Sonnet 5 intro $2/$10 → $3/$15 after
+  2026-08-31, GPT-5.6 Sol/Terra/Luna, Gemini 3.1/3.5) — review before first
+  live month; OpenRouter model IDs unverified.
+- **BE-061 — prompt registry** (`packages/llm/src/registry.ts`):
+  `promptHash` = sha256(role, prompt version, `AGENT_CONTRACT_VERSION`,
+  text) — a BE-069 contract bump changes every hash automatically;
+  `PromptRegistry` rejects text changes without a version bump;
+  `requiresRevalidation()` flags provider/snapshot/hash drift between runs.
+  Real prompt texts arrive with BE-062 (Step 3.2).
+- **BE-068 — gRPC circuit breaker** (`apis/node-api/src/signals/` — kept in
+  node-api beside the other workers, not a separate `workers/signals` pkg):
+  hand-rolled `CircuitBreaker` (§2.2 exact: 3 consecutive failures in 5 min
+  → open 60s → half-open single probe; not opossum — policy is contractual
+  and ~60 lines) + `QuantPipelineClient.runPipeline()` returning a
+  discriminated union, **never throwing**: breaker open ⇒ HOLD
+  `CIRCUIT_OPEN` (no connection attempt), DEADLINE_EXCEEDED ⇒ `GRPC_TIMEOUT`
+  (counted), transport errors ⇒ `GRPC_UNAVAILABLE` (counted);
+  FAILED_PRECONDITION ⇒ `NO_CHAMPION` and UNIMPLEMENTED ⇒ HOLD **without**
+  poisoning the breaker (service answered deterministically).
+- **Schema (`schema.prisma` `AgentRun`):** added `provider`, `tier`,
+  `model_downgraded`, `downgrade_reason`, `failed_over`, `@@index(createdAt)`
+  — migration NOT generated (sandbox can't run prisma; see pending).
+- **Env:** `QUANT_GRPC_PIPELINE_TIMEOUT_MS` (30s), optional
+  `ANTHROPIC/OPENROUTER/OPENAI/GEMINI_API_KEY` (mock-first — keyless
+  provider is absent from the chain), `LLM_MONTHLY_COST_CAP_USD` (200);
+  `.env.example` updated + fixed pre-existing `ELEGRAM_CHAT_ID` typo.
+  node-api gained dep `@fx/llm`.
+- Verified: `tsc --noEmit` clean for `packages/types`, `packages/llm`, and
+  `apis/node-api` (via path-mapped configs against @fx/types SOURCE — dist
+  is stale until rebuilt). **NOT verified in sandbox:** Vitest (rolldown
+  native binding is macOS-only here), Biome, pnpm install (mount blocks
+  unlink), prisma generate/migrate. One EXPECTED type error in
+  `llm-ledger.ts` until `prisma generate` runs (new AgentRun columns).
+- **Pending human actions (Step 3.1):** `pnpm install` (lockfile +
+  node_modules for @fx/llm); `pnpm --filter @fx/types build` (dist +
+  schemas); `npx prisma generate` then `npx prisma migrate dev --name
+  step_3_1_agent_run_provenance` (dev DB, additive); add
+  `QUANT_GRPC_PIPELINE_TIMEOUT_MS=30000`, `LLM_MONTHLY_COST_CAP_USD=200`,
+  `TELEGRAM_CHAT_ID=...` to local `.env` (check-env now requires them);
+  `pnpm test / typecheck / lint` at root. Provider API keys optional until
+  Step 3.2.
 
 ---
 

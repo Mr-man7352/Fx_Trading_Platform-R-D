@@ -19,6 +19,10 @@ import {
 } from './trading.js';
 import { WsClientMessageSchema, WsServerMessageSchema } from './ws.js';
 
+// BE-069 — agent context contracts are Node-internal: exported here but NOT
+// registered in `contractSchemas` (Python never consumes them; registering
+// would churn the QN-003 codegen drift check).
+export * from './agents.js';
 export * from './api.js';
 export * from './audit.js';
 export * from './auth.js';

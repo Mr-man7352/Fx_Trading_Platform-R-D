@@ -1,0 +1,31 @@
+{
+  "name": "@fx/llm",
+  "version": "0.0.1",
+  "private": true,
+  "description": "LLM provider factory + failover (BE-060) and prompt registry + model snapshot pinning (BE-061)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fx/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@fx/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.9"
+  }
+}

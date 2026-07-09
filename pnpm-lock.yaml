@@ -38,6 +38,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.2.0
         version: 11.2.0
+      '@fx/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       '@fx/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -210,6 +213,25 @@ importers:
       react:
         specifier: ^19.2.0
         version: 19.2.7
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.16)(tsx@4.22.5)(typescript@5.9.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(vite@8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.5)(yaml@2.9.0))
+
+  packages/llm:
+    dependencies:
+      '@fx/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@fx/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.16)(tsx@4.22.5)(typescript@5.9.3)(yaml@2.9.0)

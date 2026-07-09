@@ -75,6 +75,19 @@ const EnvSchema = z.object({
   QUANT_GRPC_URL: z.string().default('localhost:50051'),
   QUANT_GRPC_WRITE_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   QUANT_GRPC_READ_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+  /** BE-068 — RunPipeline stage budget (§2.2: 30s H1); timeout ⇒ HOLD. */
+  QUANT_GRPC_PIPELINE_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  /**
+   * BE-060 — LLM provider keys, all optional (mock-first, like OANDA): a
+   * provider without a key is simply absent from the failover chain. The
+   * agent graph (Step 3.2) refuses to boot with zero providers configured.
+   */
+  ANTHROPIC_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  OPENROUTER_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  OPENAI_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  GEMINI_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  /** BE-060 — monthly LLM budget (USD) driving the 90%/95% downgrade policy. */
+  LLM_MONTHLY_COST_CAP_USD: z.coerce.number().positive().default(200),
   /** BE-052 — mismatch action: halt (default) or flatten_and_halt. */
   RECONCILE_ACTION: z.enum(['halt', 'flatten_and_halt']).default('halt'),
   /** BE-051 — trade manager overrides. */

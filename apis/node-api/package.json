@@ -39,6 +39,7 @@
     "@fastify/websocket": "^11.2.0",
     "@grpc/grpc-js": "^1.12.6",
     "@grpc/proto-loader": "^0.7.13",
+    "@fx/llm": "workspace:*",
     "@fx/types": "workspace:*",
     "@opentelemetry/auto-instrumentations-node": "^0.56.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",

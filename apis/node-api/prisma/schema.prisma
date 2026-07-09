@@ -182,12 +182,27 @@ model Signal {
 }
 
 /// One row per agent LLM call: model, prompt_hash, token/cost accounting.
+/// BE-060/061 provenance: provider + exact snapshot + tier + downgrade and
+/// failover flags. This table IS the cost ledger — month-to-date spend is
+/// `sum(cost_usd)` over `created_at` (SpendProvider in node-api); downgraded
+/// rows are excluded from paper-window promotion evidence (§9.4).
 model AgentRun {
   id           String   @id @default(uuid()) @db.Uuid
   signalId     String?  @map("signal_id") @db.Uuid
   agentRole    String   @map("agent_role")
+  /// BE-060 — which provider answered (anthropic|openrouter|openai|gemini).
+  provider     String   @default("anthropic")
+  /// BE-061 — exact pinned model snapshot that answered.
   model        String
+  /// BE-060 — capability tier used (premium|standard|economy).
+  tier         String   @default("standard")
   promptHash   String   @map("prompt_hash")
+  /// BE-060 — true when tier was reduced (cost cap or latency SLA).
+  modelDowngraded Boolean @default(false) @map("model_downgraded")
+  /// cost_cap | latency — null when not downgraded.
+  downgradeReason String? @map("downgrade_reason")
+  /// BE-060 — true when the answer came from the fallback provider.
+  failedOver   Boolean  @default(false) @map("failed_over")
   inputTokens  Int      @default(0) @map("input_tokens")
   outputTokens Int      @default(0) @map("output_tokens")
   costUsd      Decimal  @default(0) @map("cost_usd") @db.Decimal(12, 6)
@@ -199,6 +214,8 @@ model AgentRun {
 
   @@index([signalId])
   @@index([agentRole, createdAt])
+  /// Month-to-date spend aggregation (BE-060 cost-cap policy).
+  @@index([createdAt])
   @@map("agent_runs")
 }
 
