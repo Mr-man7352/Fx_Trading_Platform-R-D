@@ -18,6 +18,13 @@ export {
   PROVIDERS,
   type ProviderName,
 } from './catalog.js';
+export {
+  cosineSimilarity,
+  EMBEDDING_DIMENSIONS,
+  type EmbeddingProvider,
+  FakeEmbeddingAdapter,
+  OpenAiEmbeddingAdapter,
+} from './embeddings.js';
 export { type LlmErrorKind, LlmExhaustedError, LlmProviderError } from './errors.js';
 export {
   type Clock,
@@ -43,8 +50,8 @@ export {
 export {
   type DecisionProvenance,
   type PromptDefinition,
-  promptHash,
   PromptRegistry,
+  promptHash,
   type RegisteredPrompt,
   requiresRevalidation,
 } from './registry.js';

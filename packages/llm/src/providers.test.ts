@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LlmProviderError } from './errors.js';
-import {
-  AnthropicAdapter,
-  type FetchLike,
-  GeminiAdapter,
-  OpenAiAdapter,
-} from './providers.js';
+import { AnthropicAdapter, type FetchLike, GeminiAdapter, OpenAiAdapter } from './providers.js';
 
 /** BE-060 — request shaping + error classification per adapter. */
 

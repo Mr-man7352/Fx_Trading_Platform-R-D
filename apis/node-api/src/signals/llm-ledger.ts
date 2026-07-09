@@ -29,6 +29,7 @@ export class PrismaLedgerSink implements LedgerSink {
         outputTokens: run.outputTokens,
         costUsd: run.costUsd,
         latencyMs: run.latencyMs,
+        retrievedMemoryIds: run.retrievedMemoryIds,
         output: run.outputText,
       },
     });

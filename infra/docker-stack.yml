@@ -112,6 +112,32 @@ services:
     networks: [backend]
     deploy: *zero_downtime
 
+  worker-signals:
+    # BE-066 — signals worker: `signals` queue → quant gRPC → entry gate
+    # (ADR-010) → agent graph (BE-062) → risk gate → execution queue.
+    image: ${REGISTRY}/fx-node-api:${TAG}
+    command: ["node", "dist/workers/signals-main.js"]
+    environment:
+      <<: *worker_env
+      QUANT_GRPC_URL: quant:50051
+      QUANT_GRPC_PIPELINE_TIMEOUT_MS: ${QUANT_GRPC_PIPELINE_TIMEOUT_MS:-30000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_MONTHLY_COST_CAP_USD: ${LLM_MONTHLY_COST_CAP_USD:-200}
+      AGENT_DEBATE_ROUNDS: ${AGENT_DEBATE_ROUNDS:-1}
+      AGENT_MEMORY_ENABLED: ${AGENT_MEMORY_ENABLED:-true}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fake}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      RISK_PROBABILITY_THRESHOLD: ${RISK_PROBABILITY_THRESHOLD:-0.6}
+      ACCOUNT_BASELINE_EQUITY: ${ACCOUNT_BASELINE_EQUITY:-10000}
+      SIGNALS_GRAPH_CONCURRENCY: ${SIGNALS_GRAPH_CONCURRENCY:-3}
+      SIGNALS_GRAPH_BUDGET_MS: ${SIGNALS_GRAPH_BUDGET_MS:-120000}
+      SIGNALS_E2E_BUDGET_MS: ${SIGNALS_E2E_BUDGET_MS:-180000}
+    networks: [backend]
+    deploy: *zero_downtime
+
   redis:
     image: redis:8-alpine
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]

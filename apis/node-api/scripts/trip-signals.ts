@@ -41,7 +41,9 @@ const queue = new Queue<SignalJob>(SIGNALS_QUEUE, { connection: connection as ne
 if (clean) {
   // obliterate() removes waiting/delayed/failed jobs and the queue keys.
   await queue.obliterate({ force: true });
-  console.log(`Drained '${SIGNALS_QUEUE}' — backlog cleared; alert should resolve within a scrape or two.`);
+  console.log(
+    `Drained '${SIGNALS_QUEUE}' — backlog cleared; alert should resolve within a scrape or two.`,
+  );
 } else {
   if (!Number.isInteger(count) || count < 1) {
     console.error('count must be a positive integer');
@@ -71,7 +73,7 @@ if (clean) {
         ? 'Expect: warning only fires after ~2m (>10). Use 30+ to also trip the critical/SMS rule.'
         : 'Below the >10 warning threshold — pass a count >10 (or omit for 30) to actually trip a rule.',
   );
-  console.log("When done, clear it: pnpm --filter @fx/node-api trip-signals -- --clean");
+  console.log('When done, clear it: pnpm --filter @fx/node-api trip-signals -- --clean');
 }
 
 await queue.close();

@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ProviderName } from './catalog.js';
 import { LlmExhaustedError, LlmProviderError } from './errors.js';
-import {
-  type Clock,
-  LlmClient,
-  type LlmClientOptions,
-  type LlmRunRecord,
-} from './factory.js';
+import { type Clock, LlmClient, type LlmClientOptions, type LlmRunRecord } from './factory.js';
 import type { ChatParams, ChatResult, ProviderAdapter } from './providers.js';
 
 /** BE-060 — failover / downgrade / ledger policy tests (fake providers). */
@@ -55,8 +50,16 @@ function setup(overrides?: {
   const clock = new FakeClock();
   const runs: LlmRunRecord[] = [];
   const adapters = {
-    anthropic: new FakeAdapter('anthropic', clock, overrides?.behaviours?.anthropic ?? [{ kind: 'ok' }]),
-    openrouter: new FakeAdapter('openrouter', clock, overrides?.behaviours?.openrouter ?? [{ kind: 'ok' }]),
+    anthropic: new FakeAdapter(
+      'anthropic',
+      clock,
+      overrides?.behaviours?.anthropic ?? [{ kind: 'ok' }],
+    ),
+    openrouter: new FakeAdapter(
+      'openrouter',
+      clock,
+      overrides?.behaviours?.openrouter ?? [{ kind: 'ok' }],
+    ),
     openai: new FakeAdapter('openai', clock, overrides?.behaviours?.openai ?? [{ kind: 'ok' }]),
   };
   const client = new LlmClient({

@@ -34,7 +34,9 @@ describe('PromptRegistry', () => {
     expect(() => registry.register({ role: 'pm', version: 1, system: 'edited text' })).toThrow(
       /version bump/,
     );
-    expect(() => registry.register({ role: 'pm', version: 2, system: 'edited text' })).not.toThrow();
+    expect(() =>
+      registry.register({ role: 'pm', version: 2, system: 'edited text' }),
+    ).not.toThrow();
   });
 
   it('throws on unregistered role (plumbing error, not a HOLD)', () => {
@@ -56,9 +58,9 @@ describe('requiresRevalidation (BE-061 acceptance)', () => {
   });
 
   it('model snapshot or prompt hash change flags re-validation', () => {
-    expect(
-      requiresRevalidation(prev, { ...prev, model: 'claude-sonnet-6' }).reasons,
-    ).toContain('model_snapshot_changed');
+    expect(requiresRevalidation(prev, { ...prev, model: 'claude-sonnet-6' }).reasons).toContain(
+      'model_snapshot_changed',
+    );
     expect(requiresRevalidation(prev, { ...prev, promptHash: 'bbb' }).reasons).toContain(
       'prompt_hash_changed',
     );

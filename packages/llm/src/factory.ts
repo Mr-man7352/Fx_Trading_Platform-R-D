@@ -49,6 +49,8 @@ export interface LlmRunRecord {
   /** True when the answer came from the fallback provider. */
   failedOver: boolean;
   signalId: string | null;
+  /** §9.5 provenance — memory ids in this call's context (QN-062 replay). */
+  retrievedMemoryIds: string[];
   outputText: string;
 }
 
@@ -100,6 +102,8 @@ export interface InvokeParams {
   /** Stage budget (§2.2) — the primary attempt's timeout. */
   stageBudgetMs: number;
   signalId?: string;
+  /** Ids of §9.5 memories present in the context bundle (BE-064). */
+  retrievedMemoryIds?: string[];
 }
 
 export interface InvokeResult {
@@ -135,9 +139,7 @@ class LatencyMonitor {
 
   /** p95 > 15s over 5 min AND the last 2 calls were slow. */
   isDegraded(provider: ProviderName, now: number): boolean {
-    const list = (this.samples.get(provider) ?? []).filter(
-      (s) => now - s.ts <= LATENCY_WINDOW_MS,
-    );
+    const list = (this.samples.get(provider) ?? []).filter((s) => now - s.ts <= LATENCY_WINDOW_MS);
     if (list.length < 2) return false;
     const lastTwoSlow = list.slice(-2).every((s) => s.ms > SLOW_CALL_MS);
     if (!lastTwoSlow) return false;
@@ -323,6 +325,7 @@ export class LlmClient {
       downgradeReason,
       failedOver,
       signalId: params.signalId ?? null,
+      retrievedMemoryIds: params.retrievedMemoryIds ?? [],
       outputText: value.text,
     });
     return result;

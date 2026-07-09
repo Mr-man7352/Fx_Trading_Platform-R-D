@@ -33,6 +33,18 @@ function fakeStub(behaviors: StubBehavior[]): { stub: QuantServiceStub; calls: n
           cb(null, behavior.response ?? okResponse);
         }
       },
+      // BE-066 — same behavior script drives SizePosition in its tests.
+      SizePosition: (_req, _opts, cb) => {
+        calls.push(Date.now());
+        const behavior = behaviors[Math.min(i, behaviors.length - 1)];
+        i += 1;
+        if (!behavior) throw new Error('no behavior');
+        if (behavior.kind === 'error') {
+          cb({ code: behavior.code, message: `code ${behavior.code}` } as grpc.ServiceError, {});
+        } else {
+          cb(null, behavior.response ?? okSizing);
+        }
+      },
     },
   };
 }
@@ -57,6 +69,16 @@ const okResponse: Record<string, unknown> = {
   debateRounds: 1,
   featureSetVersion: 3,
   challengerProbability: 0.6,
+};
+
+const okSizing: Record<string, unknown> = {
+  units: 10_000,
+  calibratedProbability: 0.62,
+  targetVolatility: 0.004,
+  sizingModelVersion: 'vol-target-v1',
+  riskAmount: 100,
+  capsApplied: [],
+  probScale: 1,
 };
 
 function run(client: QuantPipelineClient): Promise<RunPipelineOutcome> {
@@ -149,7 +171,7 @@ describe('QuantPipelineClient (BE-068)', () => {
   });
 
   it('circuit open → HOLD CIRCUIT_OPEN without attempting the connection', async () => {
-    let t = 0;
+    const t = 0;
     const { stub, calls } = fakeStub([{ kind: 'error', code: grpc.status.UNAVAILABLE }]);
     const client = new QuantPipelineClient(env, stub, new CircuitBreaker({ now: () => t }));
     for (let i = 0; i < 3; i++) await run(client);

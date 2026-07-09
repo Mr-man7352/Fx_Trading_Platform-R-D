@@ -84,13 +84,7 @@ export const QuantCandidateSchema = z.object({
 });
 export type QuantCandidate = z.infer<typeof QuantCandidateSchema>;
 
-export const SessionLabelSchema = z.enum([
-  'TOKYO',
-  'LONDON',
-  'NEW_YORK',
-  'OVERLAP',
-  'OFF_HOURS',
-]);
+export const SessionLabelSchema = z.enum(['TOKYO', 'LONDON', 'NEW_YORK', 'OVERLAP', 'OFF_HOURS']);
 export const LiquidityRegimeSchema = z.enum(['HIGH', 'NORMAL', 'LOW']);
 export const TrendRegimeSchema = z.enum(['TREND_UP', 'TREND_DOWN', 'RANGE']);
 
@@ -336,6 +330,53 @@ export const AgentContextContract = {
 
 export type AgentInput<R extends AgentRole> = z.infer<(typeof AgentContextContract)[R]['input']>;
 export type AgentOutput<R extends AgentRole> = z.infer<(typeof AgentContextContract)[R]['output']>;
+
+// ─── BE-067 — signals REST surface ───────────────────────────────────────────
+
+export const SignalStatusSchema = z.enum([
+  'candidate',
+  'approved',
+  'rejected',
+  'expired',
+  'executed',
+]);
+export type SignalStatus = z.infer<typeof SignalStatusSchema>;
+
+export const SignalsQuerySchema = z.object({
+  instrument: InstrumentSchema.optional(),
+  status: SignalStatusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type SignalsQuery = z.infer<typeof SignalsQuerySchema>;
+
+/** One recent candidate + a compact agent-cycle summary (BE-067). */
+export const SignalSummarySchema = z.object({
+  id: z.uuid(),
+  createdAt: z.iso.datetime(),
+  barTs: z.iso.datetime(),
+  instrument: z.string(),
+  timeframe: TimeframeSchema,
+  side: TradeSideSchema,
+  entryPrice: z.number().nullable(),
+  stopLoss: z.number().nullable(),
+  takeProfit: z.number().nullable(),
+  /** Calibrated quant P(profitable) for the candidate. */
+  probability: z.number().nullable(),
+  status: SignalStatusSchema,
+  agents: z.object({
+    llmCalls: z.number().int(),
+    costUsd: z.number(),
+    roles: z.array(z.string()),
+    anyDowngraded: z.boolean(),
+  }),
+  debateTurns: z.number().int(),
+});
+export type SignalSummary = z.infer<typeof SignalSummarySchema>;
+
+export const SignalsResponseSchema = z.object({
+  signals: z.array(SignalSummarySchema),
+});
+export type SignalsResponse = z.infer<typeof SignalsResponseSchema>;
 
 /**
  * Validate an LLM's raw JSON against its role's output schema. Callers map

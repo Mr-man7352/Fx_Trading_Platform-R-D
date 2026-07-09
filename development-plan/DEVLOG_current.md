@@ -17,7 +17,7 @@ deterministic risk gate + kill-switch < 2 s.
 
 ---
 
-## Current state (updated 2026-07-09)
+## Current state (updated 2026-07-10)
 
 - **Phase 2 is code-complete and (per user) tested** — Step 2.1 (QN-030…034),
   Step 2.2 (BE-050…053, audited + fixed 2026-07-07), Step 2.3 (QN-040…048).
@@ -25,13 +25,21 @@ deterministic risk gate + kill-switch < 2 s.
   in [`PHASE2_TESTING_GUIDE.md`](PHASE2_TESTING_GUIDE.md). QuantService gRPC
   RPCs (RunPipeline/SizePosition/Predict) are REAL; shadow baseline runs every
   bar; train-on-demand policy holds (no champion ⇒ deterministic HOLD).
-- **Step 3.1 (LLM plumbing) code-complete 2026-07-09** — BE-069 contracts in
-  `@fx/types` (agents.ts), BE-060/061 in new `packages/llm` (provider factory
-  + failover + prompt registry), BE-068 breaker + `QuantPipelineClient` in
-  `apis/node-api/src/signals/`. tsc-verified only; Vitest/pnpm install/prisma
-  generate+migrate are pending human actions (see the Step 3.1 entry).
-  Next: **Step 3.2** (agent graph), then **Step 3.3** (risk gate &
-  kill-switch).
+- **Step 3.1 (LLM plumbing) COMPLETE** — committed `8ef34fe`; its pending
+  actions (install, @fx/types build, `step_3_1_agent_run_provenance`
+  migration) were run by the operator 2026-07-09.
+- **Step 3.2 (agent graph) code-complete 2026-07-10** — BE-074 assembler,
+  BE-062 LangGraph graph + real prompts, BE-064 memory (env-configurable
+  embeddings, deterministic reflections, outcome sweep), BE-063 red-team
+  suite (28 fixtures), BE-065 disagreement cohort, BE-066 signals worker
+  (entry gate, semaphore 3, fail-safe risk-gate seam), BE-067 REST + WS.
+  tsc-verified only (see entry) — **pending human actions in the Step 3.2
+  entry: prisma migrate `step_3_2_agent_graph`, @fx/types + @fx/llm dist
+  builds, root test/typecheck/lint, smoke, commit.**
+- **CRITICAL SAFETY NOTE for Step 3.3:** the worker's risk gate is a
+  fail-safe `NotImplementedRiskGate` (vetoes everything) — BE-070 replaces
+  it; until then no agent decision can reach the execution queue.
+  Next: **Step 3.3** (BE-070/071/072/073 — risk gate & kill-switch).
 - **Carried-forward known issue (from Phase 2, defer):** first trained model
   `XAU_USD/H1 v1` has **no predictive edge** — OOF AUC 0.51, brier_cal 0.23,
   trained on only ~6 months / 2,121 candidates. Plumbing/smoke artifact only;
@@ -45,10 +53,11 @@ deterministic risk gate + kill-switch < 2 s.
   watchdog deploy; `/dashboard` visual check; commit + push the still-
   uncommitted Step 2.3 diff before growing the Phase-3 pile. See
   `PHASE2_TESTING_GUIDE.md` §3 for the full ordered plan.
-- **Next:** run the Step 3.1 pending human actions (install/build/migrate/
-  test — listed in the entry below), commit, then Step 3.2 — BE-074 context
-  assembler first (validates BE-069 contracts pre-invocation), then BE-062
-  LangGraph graph + BE-064 memory + BE-063 red-team + BE-065/066.
+- **Next:** run the Step 3.2 pending human actions (migrate/build/test/smoke
+  — listed in the entry below), commit, then Step 3.3 — BE-070
+  `packages/risk-gate` rule engine first (it replaces the worker's
+  fail-safe `NotImplementedRiskGate` seam), then BE-071 correlation cap,
+  BE-072/073 kill-switch.
 
 ## Phase 3 scope (from `FX_PRD.md` §8 — build order)
 
@@ -162,6 +171,128 @@ deterministic risk gate + kill-switch < 2 s.
 ## Entries
 
 <!-- Append Phase 3 step entries below, newest first. -->
+
+### 2026-07-10 — Step 3.2: Agent graph (BE-074, BE-062, BE-064, BE-063, BE-065, BE-066, BE-067)
+
+All new Node code lives in `apis/node-api/src/signals/` beside the Step-3.1
+plumbing. **LangGraph.js installed per plan** (`@langchain/langgraph@1.4.7` +
+`@langchain/core@1.2.2`, operator ran the pnpm add). New verification seam:
+`apis/node-api/tsconfig.verify.json` — path-maps `@fx/types`/`@fx/llm` to
+SOURCE so sandbox `tsc` works without dist builds (tsup/rollup native
+bindings are macOS-only here); kept committed on purpose.
+
+- **BE-074 — context assembler** (`context-assembler.ts`): the ONE owner of
+  bundle construction. Feature partitioning mirrors quant
+  `partition_features()` byte-for-byte (`macro_*`/`sent_*`/rest); PIT
+  headlines from `news_archive` via `MarketRepo.queryNews` wrapped in the
+  `UNTRUSTED_DATA` block; §9.5 memory slot behind `MemoryRetriever`
+  (`NULL_MEMORY` for ablation); every bundle validated against
+  `AgentContextContract` pre-invocation (fail ⇒ `SCHEMA_INVALID`, never
+  throw); `buildDigest()` = the ADR-011 deterministic PM digest;
+  `effectiveDebateRounds()` (entropy ≥ 2/3 ⇒ 2, same threshold as quant
+  `regime.debate_rounds`); `tiebreakerMode()` (<0.1 split ⇒ QUANT_DEFAULT).
+- **BE-062 — graph + prompts** (`agent-graph.ts`, `prompts.ts`): real prompt
+  texts v1 for all 8 roles registered in the BE-061 registry (SECURITY block
+  everywhere; sentiment prompt carries the untrusted-data contract; the user
+  message is always the JSON bundle — no string interpolation surface).
+  LangGraph `StateGraph`: 3 specialists parallel (fan-out from START,
+  array-source join) → 0/1/2 debate rounds → trader → risk → PM. §2.2
+  budgets: 20s/specialist, 15s/debate turn, 15s trader/risk/PM, 120s graph
+  (run()-level race), each stage +grace for the contractual 10s single
+  fallback. One failed specialist ⇒ NEUTRAL + transcript note; failed turn ⇒
+  skipped + noted; failed trader/risk/PM ⇒ deterministic HOLD w/ reason.
+  **QUANT_DEFAULT is code-enforced post-hoc** (P ≥ threshold ⇒ candidate
+  side, else HOLD; `tiebreakerOverrode` flagged) — never LLM discretion.
+  Partial transcript survives graph-budget overruns via a per-run collector.
+  `retrievedMemoryIds` added to `@fx/llm` `InvokeParams`/`LlmRunRecord` →
+  `agent_runs.retrieved_memory_ids` (QN-062 replay).
+- **BE-064 — agent memory** (`agent-memory.ts` + `@fx/llm` `embeddings.ts`):
+  embedding seam is **env-configurable** (`EMBEDDING_PROVIDER=openai|fake`,
+  `EMBEDDING_MODEL`; default fake = deterministic sha256 unit vectors,
+  keyless CI) with a hard 1536-dim runtime assert (column is vector(1536));
+  `embedding_model` pinned per row AND filtered at retrieval — vector spaces
+  never mix. Retrieval: `bar_ts <=` hard filter, instrument match, HNSW
+  cosine (`<=>`), K=5, 18-month read-time decay window, retrieval_count++.
+  **Reflection is composed by CODE** (`composeReflection`) not an LLM —
+  ADR-011 logic extended: zero cost, reproducible, no second-order injection
+  surface (the only LLM text reaching memory is schema-validated output
+  fields, red-teamed directly). Near-duplicate (cosine > 0.95) merged at
+  WRITE time (existing row wins, inherits new signal_id); `enforceCap` 500/
+  instrument (least-retrieved-then-oldest evicted). Outcome linking: new
+  `agent_memory.signal_id` column; `sweepTradeOutcomes` (60s timer in the
+  worker) attaches R-multiple/exit/holding on trade close.
+- **BE-063 — red-team suite** (`red-team.fixtures.ts` + `red-team.test.ts`):
+  28 fixtures across 10 categories (incl. the mandated override, role-play,
+  delimiter escape, CB mimicry, JSON injection, multi-language ×5, and 3
+  memory-persistence patterns). Suite proves: (1) per-pattern byte-identical
+  decisions vs clean baseline + injected text confined to the sentiment
+  UNTRUSTED_DATA block (never any other bundle or system prompt); (2)
+  attack-shaped outputs (smuggled keys, confidence 9.9) rejected by strict
+  contracts; (3) memory-persistence: a gullible model quoting the injection
+  into its rationale → reflection → retrieval at bar N+k leaves decisions
+  identical; (4) prompt-hygiene asserts. Live-model behavioural red-teaming
+  is a paper-phase exercise; this suite is its regression harness (new
+  production patterns get added to the fixtures file).
+- **BE-065 — disagreement cohort** (`disagreement.ts` + new
+  `disagreement_cohort` table): "quant approves" ≡ P ≥ ADR-008 threshold;
+  kinds `QUANT_YES_PM_VETO|QUANT_YES_PM_HOLD|QUANT_NO_PM_APPROVE`; outcome
+  tracking by join (signal → intents → trades; counterfactuals via
+  `baseline_signals`). Structural Prisma seam so it typechecks pre-generate.
+- **BE-066 — signals worker** (`signals-worker.ts`, `workers/signals.ts` +
+  `signals-main.ts`; scripts `worker:signals`/`start:worker:signals`; compose
+  + Swarm stack services `worker-signals` added): first consumer of the
+  `signals` queue market-data has produced since Phase 2. Cycle: halt check
+  → RunPipeline (breaker) → **entry gate** (no candidate or P < 0.50 ⇒
+  `gate_skip`, zero LLM, no Signal row) → Signal row → `PrioritySemaphore`
+  (cap 3, liquidity-ranked wakeups, **E2E clock starts at acquisition**) →
+  assembler → graph → debate persistence (`agent_debates`; notes as `judge`
+  rows) → BE-065 log + reflection → **risk-gate seam** → SizePosition (new
+  RPC method on `QuantPipelineClient`, never-throw union) → TradeIntent +
+  execution queue. Every path completes the BullMQ job. **Risk gate is
+  `NotImplementedRiskGate` until BE-070: fail-safe VETO of everything** —
+  agent APPROVEs cannot execute until the deterministic authority lands
+  (Step 3.3). 2s gate budget → VETO on overrun (§2.2). AccountState =
+  `ACCOUNT_BASELINE_EQUITY` + realized P&L from trades (broker equity sync
+  comes later); BullMQ concurrency 2× the semaphore so the gate section
+  never queues behind the graph section. Zero LLM keys ⇒ loud boot warning +
+  deterministic HOLD (PROVIDER_EXHAUSTED) — not a crash.
+- **BE-067 — REST + WS** (`routes/signals.ts`, schemas in `@fx/types`
+  agents.ts): `GET /signals` (instrument/status/limit filters) returns
+  candidates + agent summary (calls, cost, roles, anyDowngraded, debate
+  turns). Live side rides the existing ws-publish → ws-bridge → EventBus
+  path (channel `signals`, events `signal:hold|debate|risk_gate_veto|
+  approved`) — no new transport. Done now despite the story's Phase-5 tag
+  (PRD §8 lists it in Step 3.2; operator confirmed).
+- **Schema** (`schema.prisma` — migration NOT generated, see pending):
+  `agent_runs.retrieved_memory_ids uuid[]`; `agent_memory.{embedding_model,
+  retrieval_count, signal_id}` + signal_id index; new `disagreement_cohort`
+  model (FK to signals). All additive except nothing — no destructive SQL.
+- **Env** (env.ts + .env.example + both compose files): `AGENT_DEBATE_ROUNDS`
+  (1), `AGENT_MEMORY_ENABLED` (true), `EMBEDDING_PROVIDER` (fake) /
+  `EMBEDDING_MODEL`, `RISK_PROBABILITY_THRESHOLD` (0.6),
+  `ACCOUNT_BASELINE_EQUITY` (10000), `SIGNALS_GRAPH_CONCURRENCY` (3),
+  `SIGNALS_GRAPH_BUDGET_MS` (120000), `SIGNALS_E2E_BUDGET_MS` (180000).
+  `scripts/check-env.mjs --ci` passes (44 keys).
+- Verified: `tsc --noEmit` clean for `packages/types` and `packages/llm`
+  (standalone) and `apis/node-api` via `tsconfig.verify.json` — exactly ONE
+  expected error (`llm-ledger.ts` retrievedMemoryIds) until `prisma
+  generate` runs. **NOT verified in sandbox:** Vitest (macOS-only rolldown
+  binding — 7 new test files unrun), Biome, prisma generate/migrate, tsup
+  builds, any live LLM/pgvector round-trip.
+- **Pending human actions (Step 3.2):**
+  1. `npx prisma generate` then `npx prisma migrate dev --name
+     step_3_2_agent_graph` (in `apis/node-api`; additive).
+  2. `pnpm --filter @fx/types build && pnpm --filter @fx/llm build`
+     (node-api resolves @fx/llm via dist at runtime — llm has NEVER been
+     built; the signals worker won't boot without it).
+  3. Root `pnpm typecheck / test / lint` (expect the llm-ledger error to
+     clear after step 1; 7 new test files: context-assembler, agent-graph,
+     agent-memory, red-team, disagreement, signals-worker, routes/signals).
+  4. Provider keys in `.env` when ready to exercise the graph for real;
+     `EMBEDDING_PROVIDER=openai` before any paper evidence run.
+  5. Smoke: `pnpm --filter @fx/node-api worker:signals` + `trip-signals`
+     (expect gate_skip/NO_CHAMPION HOLDs, zero LLM cost, jobs completing).
+  6. Commit.
 
 ### 2026-07-09 — Step 3.1: LLM plumbing (BE-069, BE-060, BE-061, BE-068)
 

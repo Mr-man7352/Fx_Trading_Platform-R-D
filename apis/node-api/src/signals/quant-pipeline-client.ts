@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { HoldReason, QuantCandidate, Timeframe } from '@fx/types';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
-import type { HoldReason, QuantCandidate, Timeframe } from '@fx/types';
 import type { Env } from '../env.js';
 import { CircuitBreaker } from './circuit-breaker.js';
 
@@ -64,7 +64,27 @@ export type QuantServiceStub = {
     opts: grpc.CallOptions,
     cb: (err: grpc.ServiceError | null, res: Record<string, unknown>) => void,
   ) => void;
+  SizePosition: (
+    req: Record<string, unknown>,
+    opts: grpc.CallOptions,
+    cb: (err: grpc.ServiceError | null, res: Record<string, unknown>) => void,
+  ) => void;
 };
+
+/** Mirrors proto `SizePositionResponse` (QN-042 sizing audit trail). */
+export interface SizingResult {
+  units: number;
+  calibratedProbability: number;
+  targetVolatility: number;
+  sizingModelVersion: string;
+  riskAmount: number;
+  capsApplied: string[];
+  probScale: number;
+}
+
+export type SizePositionOutcome =
+  | { kind: 'sized'; sizing: SizingResult }
+  | { kind: 'hold'; reason: HoldReason; detail: string };
 
 export class QuantPipelineClient {
   private readonly stub: QuantServiceStub;
@@ -152,7 +172,63 @@ export class QuantPipelineClient {
     return { kind: 'result', result: mapResponse(res) };
   }
 
-  private mapError(err: unknown): RunPipelineOutcome {
+  /**
+   * BE-066 — deterministic position sizing for an approved candidate
+   * (QN-042 vol-target + caps). Same never-throw / breaker semantics as
+   * runPipeline; sizing is a fast read so it runs under `sizingTimeoutMs`
+   * (default 10s), not the 30s pipeline budget.
+   */
+  async sizePosition(params: {
+    instrument: string;
+    side: 'long' | 'short';
+    probability: number;
+    accountEquity: number;
+    entryPrice: number;
+    stopLossPrice: number;
+    sizingTimeoutMs?: number;
+  }): Promise<SizePositionOutcome> {
+    if (!this.breaker.canAttempt()) {
+      return {
+        kind: 'hold',
+        reason: 'CIRCUIT_OPEN',
+        detail: `breaker ${this.breaker.state()} — call not attempted`,
+      };
+    }
+    let res: Record<string, unknown>;
+    try {
+      res = await new Promise((resolvePromise, rejectPromise) => {
+        this.stub.SizePosition(
+          {
+            instrument: params.instrument,
+            side: params.side === 'short' ? 2 : 1,
+            probability: params.probability,
+            accountEquity: params.accountEquity,
+            entryPrice: params.entryPrice,
+            stopLossPrice: params.stopLossPrice,
+          },
+          { deadline: Date.now() + (params.sizingTimeoutMs ?? 10_000) },
+          (err, value) => (err ? rejectPromise(err) : resolvePromise(value)),
+        );
+      });
+    } catch (err) {
+      return this.mapError(err);
+    }
+    this.breaker.recordSuccess();
+    return {
+      kind: 'sized',
+      sizing: {
+        units: (res.units as number) ?? 0,
+        calibratedProbability: (res.calibratedProbability as number) ?? 0,
+        targetVolatility: (res.targetVolatility as number) ?? 0,
+        sizingModelVersion: (res.sizingModelVersion as string) ?? '',
+        riskAmount: (res.riskAmount as number) ?? 0,
+        capsApplied: (res.capsApplied as string[]) ?? [],
+        probScale: (res.probScale as number) ?? 1,
+      },
+    };
+  }
+
+  private mapError(err: unknown): { kind: 'hold'; reason: HoldReason; detail: string } {
     const code = (err as grpc.ServiceError)?.code;
     const detail = err instanceof Error ? err.message : String(err);
 

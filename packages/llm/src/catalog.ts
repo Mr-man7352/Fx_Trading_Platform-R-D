@@ -71,7 +71,5 @@ export function downgradeTier(tier: CapabilityTier): CapabilityTier {
 }
 
 export function costUsd(pin: PinnedModel, inputTokens: number, outputTokens: number): number {
-  return (
-    (inputTokens * pin.inputUsdPerMTok + outputTokens * pin.outputUsdPerMTok) / 1_000_000
-  );
+  return (inputTokens * pin.inputUsdPerMTok + outputTokens * pin.outputUsdPerMTok) / 1_000_000;
 }

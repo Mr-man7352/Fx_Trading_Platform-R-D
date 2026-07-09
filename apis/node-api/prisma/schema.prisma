@@ -172,9 +172,10 @@ model Signal {
   tradingMode     TradingMode  @map("trading_mode")
   features        Json?
 
-  agentRuns AgentRun[]
-  debate    AgentDebateMessage[]
-  intents   TradeIntent[]
+  agentRuns     AgentRun[]
+  debate        AgentDebateMessage[]
+  intents       TradeIntent[]
+  disagreements DisagreementEvent[]
 
   @@index([instrument, barTs])
   @@index([status, createdAt])
@@ -207,6 +208,8 @@ model AgentRun {
   outputTokens Int      @default(0) @map("output_tokens")
   costUsd      Decimal  @default(0) @map("cost_usd") @db.Decimal(12, 6)
   latencyMs    Int      @default(0) @map("latency_ms")
+  /// BE-064 — §9.5 memory ids in this call's context (QN-062 replay).
+  retrievedMemoryIds String[] @default([]) @map("retrieved_memory_ids") @db.Uuid
   output       Json?
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -252,14 +255,47 @@ model AgentMemory {
   barTs      DateTime                     @map("bar_ts") @db.Timestamptz(6)
   instrument String
   agentRole  String                       @map("agent_role")
+  /// BE-064 — links the reflection to the signal that produced it so the
+  /// trade-close outcome update can find it. Plain column, no FK: memories
+  /// must outlive signal eviction/cleanup.
+  signalId   String?                      @map("signal_id") @db.Uuid
   summary    String
   embedding  Unsupported("vector(1536)")?
+  /// BE-064 — pinned per row; an embedding model change requires an explicit
+  /// re-embed migration, never silent mixing (§9.5).
+  embeddingModel String                   @default("fake-embedding-v1") @map("embedding_model")
   outcome    Json?
+  /// BE-064 hygiene — bumped on retrieval; feeds relevance-weighted eviction.
+  retrievalCount Int                      @default(0) @map("retrieval_count")
   createdAt  DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([barTs])
   @@index([instrument, agentRole, barTs])
+  @@index([signalId])
   @@map("agent_memory")
+}
+
+/// BE-065 — quant vs LLM disagreement cohort. One row whenever the quant
+/// candidate and the PM decision conflict (veto value measurement). Outcome
+/// tracking joins signal_id → trade_intents → trades at query time; for
+/// vetoed candidates the counterfactual outcome comes from the shadow
+/// baseline (baseline_signals) at the same bar.
+model DisagreementEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  signalId         String   @map("signal_id") @db.Uuid
+  /// QUANT_YES_PM_VETO | QUANT_YES_PM_HOLD | QUANT_NO_PM_APPROVE
+  kind             String
+  /// Calibrated P(profitable) the quant emitted for the candidate.
+  quantProbability Float    @map("quant_probability")
+  pmDecision       String   @map("pm_decision")
+  pmRationale      String?  @map("pm_rationale")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@index([kind, createdAt])
+  @@index([signalId])
+  @@map("disagreement_cohort")
 }
 
 enum IntentStatus {

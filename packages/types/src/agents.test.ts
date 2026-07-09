@@ -56,7 +56,12 @@ const specialists = {
   sentiment: { stance: 'BULL', confidence: 0.55, rationale: 'Net-positive headlines.' },
 } as const;
 
-const turn = { round: 0, speaker: 'bull', argument: 'Breakout confirmed.', confidence: 0.6 } as const;
+const turn = {
+  round: 0,
+  speaker: 'bull',
+  argument: 'Breakout confirmed.',
+  confidence: 0.6,
+} as const;
 
 const goldenInputs: Record<AgentRole, Record<string, unknown>> = {
   technical_analyst: {
@@ -168,9 +173,9 @@ describe('AgentContextContract (BE-069)', () => {
   });
 
   it('rejects extra keys on outputs (strict — LLM JSON must match exactly)', () => {
-    expect(
-      SpecialistOutputSchema.safeParse({ ...specialistOut, extra: 'nope' }).success,
-    ).toBe(false);
+    expect(SpecialistOutputSchema.safeParse({ ...specialistOut, extra: 'nope' }).success).toBe(
+      false,
+    );
     expect(PmOutputSchema.safeParse({ ...pmOut, note: 'x' }).success).toBe(false);
   });
 
@@ -184,12 +189,12 @@ describe('AgentContextContract (BE-069)', () => {
   });
 
   it('rejects out-of-range confidence and empty rationale', () => {
-    expect(
-      SpecialistOutputSchema.safeParse({ ...specialistOut, confidence: 1.2 }).success,
-    ).toBe(false);
-    expect(
-      SpecialistOutputSchema.safeParse({ ...specialistOut, rationale: '' }).success,
-    ).toBe(false);
+    expect(SpecialistOutputSchema.safeParse({ ...specialistOut, confidence: 1.2 }).success).toBe(
+      false,
+    );
+    expect(SpecialistOutputSchema.safeParse({ ...specialistOut, rationale: '' }).success).toBe(
+      false,
+    );
   });
 
   it('validateAgentOutput returns ok:false (not throw) on garbage', () => {
@@ -205,7 +210,10 @@ describe('AgentContextContract (BE-069)', () => {
   it('digest is the ADR-011 deterministic shape (nullable final round)', () => {
     const digest = (goldenInputs.pm as { digest: unknown }).digest;
     expect(DebateDigestSchema.safeParse(digest).success).toBe(true);
-    const noDebate = { ...(digest as Record<string, unknown>), finalRound: { bull: null, bear: null } };
+    const noDebate = {
+      ...(digest as Record<string, unknown>),
+      finalRound: { bull: null, bear: null },
+    };
     expect(DebateDigestSchema.safeParse(noDebate).success).toBe(true);
   });
 });

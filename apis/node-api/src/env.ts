@@ -88,6 +88,29 @@ const EnvSchema = z.object({
   GEMINI_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
   /** BE-060 — monthly LLM budget (USD) driving the 90%/95% downgrade policy. */
   LLM_MONTHLY_COST_CAP_USD: z.coerce.number().positive().default(200),
+  /** BE-062 — static debate rounds (entropy ≥ 2/3 forces 2 regardless, §9.6). */
+  AGENT_DEBATE_ROUNDS: z.coerce.number().int().min(0).max(2).default(1),
+  /** BE-064 — memory on/off; off = stateless quant-only ablation mode. */
+  AGENT_MEMORY_ENABLED: z
+    .preprocess((v) => (v === '' ? undefined : v), z.enum(['true', 'false']).default('true'))
+    .transform((v) => v === 'true'),
+  /**
+   * BE-064 — embedding setup (§9.5 versioning). `fake` is deterministic and
+   * keyless (dev/CI); switch to `openai` before paper evidence runs. The
+   * model is pinned per memory row and retrieval filters on it — changing
+   * provider/model requires an explicit re-embed migration, never mixing.
+   */
+  EMBEDDING_PROVIDER: z.enum(['openai', 'fake']).default('fake'),
+  EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  /** ADR-008 — P(profitable) threshold (risk gate + QUANT_DEFAULT tiebreaker). */
+  RISK_PROBABILITY_THRESHOLD: z.coerce.number().gt(0).lt(1).default(0.6),
+  /** BE-066 — paper-mode equity baseline until broker account sync exists. */
+  ACCOUNT_BASELINE_EQUITY: z.coerce.number().positive().default(10_000),
+  /** BE-066 — max concurrent LangGraph runs (§9.6 cap: 3). */
+  SIGNALS_GRAPH_CONCURRENCY: z.coerce.number().int().positive().default(3),
+  /** BE-066 — §2.2 budgets (H1); E2E measured from semaphore acquisition. */
+  SIGNALS_GRAPH_BUDGET_MS: z.coerce.number().int().positive().default(120_000),
+  SIGNALS_E2E_BUDGET_MS: z.coerce.number().int().positive().default(180_000),
   /** BE-052 — mismatch action: halt (default) or flatten_and_halt. */
   RECONCILE_ACTION: z.enum(['halt', 'flatten_and_halt']).default('halt'),
   /** BE-051 — trade manager overrides. */

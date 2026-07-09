@@ -23,6 +23,7 @@ import { registerAuditRoutes } from './routes/audit.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerMarketRoutes } from './routes/market.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
+import { registerSignalsRoutes } from './routes/signals.js';
 import { registerWsRoutes } from './routes/ws.js';
 
 declare module 'fastify' {
@@ -175,6 +176,7 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
   registerWsRoutes(app, env);
   registerAuditRoutes(app); // BE-130 — GET /audit (503 without a DB client)
   registerMarketRoutes(app); // BE-042/BE-045 — /market/{instruments,candles,news}
+  registerSignalsRoutes(app); // BE-067 — GET /signals (agent-cycle summaries)
 
   return app;
 }
