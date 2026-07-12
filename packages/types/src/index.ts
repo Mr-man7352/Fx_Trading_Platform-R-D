@@ -26,6 +26,8 @@ export * from './agents.js';
 export * from './api.js';
 export * from './audit.js';
 export * from './auth.js';
+// BE-090/QN-052 — backtest contracts (Node-internal, like agents.js).
+export * from './backtest.js';
 export * from './broker.js';
 // BE-072/073 — kill-switch API contracts (Node-internal, like agents.js).
 export * from './killswitch.js';

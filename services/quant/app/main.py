@@ -66,6 +66,11 @@ def create_app() -> FastAPI:
             tradingMode=TradingMode(settings.trading_mode),
         )
 
+    # Step 4.2 — backtest trigger (QN-050, called by BE-090) + analytics (QN-055).
+    from app.routes_backtest import router as backtest_router
+
+    app.include_router(backtest_router)
+
     return app
 
 

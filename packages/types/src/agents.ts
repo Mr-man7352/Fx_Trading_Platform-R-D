@@ -19,7 +19,7 @@ import { InstrumentSchema, TradeSideSchema } from './trading.js';
  * so a contract change automatically changes every prompt hash and flags
  * re-validation.
  */
-export const AGENT_CONTRACT_VERSION = 1;
+export const AGENT_CONTRACT_VERSION = 2;
 
 // ─── Roles & shared primitives ───────────────────────────────────────────────
 
@@ -32,6 +32,8 @@ export const AgentRoleSchema = z.enum([
   'trader',
   'risk_team',
   'pm',
+  /** BE-080 — open-trade supervisor (Phase 4); advisory, risk-reducing only. */
+  'supervisor',
 ]);
 export type AgentRole = z.infer<typeof AgentRoleSchema>;
 
@@ -315,7 +317,65 @@ export const PmOutputSchema = z.strictObject({
 });
 export type PmOutput = z.infer<typeof PmOutputSchema>;
 
-// ─── The contract map (BE-069 acceptance: all 8 roles) ───────────────────────
+// ─── Supervisor (BE-080 — Phase 4 open-trade supervision) ────────────────────
+
+/**
+ * Deterministic snapshot of one OPEN trade at supervision time. Built by code
+ * from `trades` + latest tick/features — the LLM only ever sees this shape.
+ */
+export const SupervisionTradeSnapshotSchema = z.object({
+  tradeId: z.uuid(),
+  instrument: InstrumentSchema,
+  side: TradeSideSchema,
+  units: z.number(),
+  entryPrice: z.number(),
+  currentPrice: z.number(),
+  stopLoss: z.number().nullable(),
+  takeProfit: z.number().nullable(),
+  openedAt: z.iso.datetime(),
+  holdingHours: z.number(),
+  /** Unrealized R-multiple vs the ORIGINAL risk distance (never re-based). */
+  rMultiple: z.number(),
+  partialTaken: z.boolean(),
+});
+export type SupervisionTradeSnapshot = z.infer<typeof SupervisionTradeSnapshotSchema>;
+
+/** Bar-level market context relevant to holding (not entering) a position. */
+export const SupervisorMarketContextSchema = z.object({
+  sessionLabel: SessionLabelSchema,
+  liquidityRegime: LiquidityRegimeSchema,
+  /** Wednesday 17:00-NY rollover ahead while held >2 days (QN-047). */
+  tripleSwapAhead: z.boolean(),
+  /** Inside the Friday pre-close gap-risk window. */
+  weekendGapWindow: z.boolean(),
+  calendarAvailable: z.boolean(),
+  upcomingHighImpactEvent: z.boolean(),
+});
+
+export const SupervisorInputSchema = z.object({
+  contractVersion: z.literal(AGENT_CONTRACT_VERSION),
+  role: z.literal('supervisor'),
+  trade: SupervisionTradeSnapshotSchema,
+  market: SupervisorMarketContextSchema,
+  /** Deterministic gate reasons that triggered this run (BE-080 — the LLM
+   * runs ONLY on material change; these say what changed). */
+  changeReasons: z.array(z.string()).min(1),
+});
+export type SupervisorInput = z.infer<typeof SupervisorInputSchema>;
+
+/**
+ * Supervisor decisions are ADVISORY and risk-reducing only: the worker maps
+ * them to close / tighten (never widen) / partial-close; the deterministic
+ * layered exit system (BE-081) and risk gate retain final authority.
+ */
+export const SupervisorOutputSchema = z.strictObject({
+  action: z.enum(['HOLD', 'CLOSE', 'TIGHTEN_STOP', 'TAKE_PARTIAL']),
+  confidence: ConfidenceSchema,
+  rationale: z.string().min(1),
+});
+export type SupervisorOutput = z.infer<typeof SupervisorOutputSchema>;
+
+// ─── The contract map (BE-069 acceptance: all 8 graph roles + supervisor) ────
 
 export const AgentContextContract = {
   technical_analyst: { input: TechnicalAnalystInputSchema, output: SpecialistOutputSchema },
@@ -326,6 +386,7 @@ export const AgentContextContract = {
   trader: { input: TraderInputSchema, output: TraderOutputSchema },
   risk_team: { input: RiskTeamInputSchema, output: RiskTeamOutputSchema },
   pm: { input: PmInputSchema, output: PmOutputSchema },
+  supervisor: { input: SupervisorInputSchema, output: SupervisorOutputSchema },
 } as const satisfies Record<AgentRole, { input: z.ZodType; output: z.ZodType }>;
 
 export type AgentInput<R extends AgentRole> = z.infer<(typeof AgentContextContract)[R]['input']>;

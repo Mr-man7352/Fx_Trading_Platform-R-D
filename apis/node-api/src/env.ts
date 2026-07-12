@@ -144,6 +144,22 @@ const EnvSchema = z.object({
   /** BE-050 — optional Telegram alerts (no-op when unset). */
   TELEGRAM_BOT_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
   TELEGRAM_CHAT_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  /** BE-080 — supervision scan cadence (layers + gate; LLM only on material change). */
+  SUPERVISION_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  /** BE-081 — time-stop layer: max holding hours before deterministic close. */
+  SUPERVISION_TIME_STOP_HOURS: z.coerce.number().positive().default(72),
+  /** BE-080 — adverse excursion (in R) that always counts as material change. */
+  SUPERVISION_ADVERSE_R: z.coerce.number().positive().default(0.75),
+  /** BE-080 — LLM supervisor stage budget (§2.2-style; one call per material change). */
+  SUPERVISION_STAGE_BUDGET_MS: z.coerce.number().int().positive().default(15_000),
+  /** BE-090 — quant service REST base URL (vectorbt backtest trigger). */
+  QUANT_HTTP_URL: z.string().url().default('http://localhost:5001'),
+  /** BE-090 — quant backtest HTTP timeout (vectorised runs are minutes, not ms). */
+  QUANT_BACKTEST_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+  /** QN-052 — LLM response cache dir for reproducible agentic backtests. */
+  LLM_CACHE_DIR: z.string().default('var/llm-cache'),
+  /** QN-050/056 — risk fraction per simulated trade (both engines must match). */
+  BACKTEST_RISK_PCT: z.coerce.number().gt(0).lt(1).default(0.01),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

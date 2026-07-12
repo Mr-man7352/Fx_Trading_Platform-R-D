@@ -1,143 +1,185 @@
-# DEVLOG — Phase 4 (Lifecycle)
+# DEVLOG — Phase 5 (Surface)
 
-Continuation of [`DEVLOG_phase3.md`](DEVLOG_phase3.md) (the Phase-3 record —
-Intelligence; per-step build history lives there) and, before it,
-[`DEVLOG_phase2.md`](DEVLOG_phase2.md) and [`DEVLOG-phase1.md`](DEVLOG-phase1.md).
-The **Standing decisions** and **Conventions** carried through Phases 1 → 3 are
-carried forward in full below and remain the *current* single source of truth —
-no need to cross-read the earlier logs for them. Same rules: **append a new
-entry per step; keep "Current state" at the top updated.** Plan:
-[`FX_PRD.md`](FX_PRD.md) §8 Phase 4, stories in `FX_Stories_*.md`, architecture
-in `system-design/FX_System_Design.md`.
+Continuation of [`DEVLOG_phase4.md`](DEVLOG_phase4.md) (the Phase-4 record —
+Lifecycle; per-step build history lives there) and, before it,
+[`DEVLOG_phase3.md`](DEVLOG_phase3.md), [`DEVLOG_phase2.md`](DEVLOG_phase2.md)
+and [`DEVLOG-phase1.md`](DEVLOG-phase1.md). The **Standing decisions** and
+**Conventions** carried through Phases 1 → 4 are carried forward in full below
+and remain the *current* single source of truth — no need to cross-read the
+earlier logs for them. Same rules: **append a new entry per step; keep "Current
+state" at the top updated.** Plan: [`FX_PRD.md`](FX_PRD.md) §9 Phase 5, stories
+in `FX_Stories_*.md`, architecture in `system-design/FX_System_Design.md`.
 
-**Phase 4 outcome:** open trades supervised; reproducible backtests including
-agentic runs.
-**Exit criteria:** a backtest replays deterministically; the agentic runner
-matches the quant core on the quant-only path; ablations runnable.
+**Phase 5 outcome:** full auth, dashboard, settings, and notifications — the
+operator can run the platform without touching a terminal.
+**Exit criteria:** operator completes the full workflow (sign-in → arm paper →
+observe debate → kill-switch) from the dashboard, with alerts firing.
 
 ---
 
 ## Current state (updated 2026-07-12)
 
-- **Phase 3 is CODE-COMPLETE but NOT runtime-tested.** All Step 3.1/3.2/3.3
-  code shipped and is tsc-verified, but nothing has been installed, migrated,
-  built, unit-tested, or drilled on a real machine, and no live LLM/broker
-  round-trip has ever run. Full record + per-step build history in
-  [`DEVLOG_phase3.md`](DEVLOG_phase3.md); ordered runtime plan in
-  [`PHASE3_TESTING_GUIDE.md`](PHASE3_TESTING_GUIDE.md). **These proofs are a
-  hard prerequisite for the Phase-4 backtest work** (the vectorbt engine and
-  the agentic runner both ride the Phase-3 gate→agents→risk-gate path — close
-  that loop before trusting any backtest output).
-- **Outstanding Phase-3 human actions (carried forward, must clear first):**
-  1. `pnpm install` (lockfile + node_modules for new `@fx/risk-gate`).
-  2. `npx prisma generate` then `npx prisma migrate dev --name
-     step_3_3_kill_switch` in `apis/node-api` (additive — one new
-     `kill_switch_state` table). Step 3.1/3.2 migrations were already run by the
-     operator (`step_3_1_agent_run_provenance`, `step_3_2_agent_graph`).
+- **Phase 5 (Surface) is NOT STARTED.** This log is the fresh Phase-5 record;
+  the first step entry will be appended below when work begins. Scope +
+  suggested build order are in the next section (PRD §9). Nothing in
+  `apps/dashboard` beyond the Phase-1 scaffold and no auth backend beyond the
+  internal-token stand-in has been written yet.
+- **Phase 4 (Lifecycle) is CODE-COMPLETE but runtime-UNPROVEN and uncommitted.**
+  Supervision (BE-080/081), the vectorbt quant engine + validation/ablation
+  (QN-050…054), calibration/regime endpoints (QN-055), the event-driven agentic
+  runner + three modes (QN-056/052), and the backtest API (BE-090) all shipped
+  in source and were source-audited, but nothing has been `pnpm install`ed,
+  migrated, built, unit-tested, or drilled on a real machine, and no live
+  gRPC/LLM/broker round-trip has run. Full record + per-step history in
+  [`DEVLOG_phase4.md`](DEVLOG_phase4.md); ordered proof plan in
+  [`PHASE4_TESTING_GUIDE.md`](PHASE4_TESTING_GUIDE.md). **FE-080 (backtest
+  config + results UI) was deliberately deferred to Phase 5** — it lands here
+  with the rest of the dashboard, hung on the new AppShell (BE-090 already
+  surfaces results over REST/WS, so the API is the interface until then).
+- **Carried-forward runtime gate (Phases 3 + 4 — a hard prerequisite for the
+  Phase-5 dashboard to show anything real):**
+  1. `pnpm install` (links the workspace; picks up `@fx/risk-gate` +
+     Phase-4 backtest/supervision modules).
+  2. `npx prisma generate` then `npx prisma migrate dev` in `apis/node-api`.
+     **No new migration is pending** — the Phase-3 `kill_switch_state` table and
+     the Phase-4 `supervisions` / `backtest_runs` tables are already in the
+     committed chain (`20260704000000_init` carries the Phase-4 tables; expect
+     "No changes"). Just apply the chain and confirm the tables exist
+     ([`PHASE4_TESTING_GUIDE.md`](PHASE4_TESTING_GUIDE.md) §B).
   3. `pnpm --filter @fx/types build && pnpm --filter @fx/risk-gate build`
-     (+ `@fx/llm` build if not already done — node-api resolves these via dist
-     at runtime).
-  4. Root `pnpm typecheck / test / lint` (Vitest never ran in the sandbox —
-     ~46 new Step-3.3 cases + all Step-3.2 suites incl. the 28-fixture red-team
-     suite are unrun).
-  5. Runtime drill per [`PHASE3_TESTING_GUIDE.md`](PHASE3_TESTING_GUIDE.md):
-     risk-gate E2E, kill-switch <2s timed activate, and the Redis-flush chaos
-     check (ADR-012).
-  6. **Commit Step 3.3** (still uncommitted) — suggested:
-     `feat(risk): Step 3.3 deterministic risk gate & kill-switch (BE-070..073)`.
-     Steps 3.1/3.2 are committed (`8ef34fe` / `975c2c8`).
-- **Carried-forward known issue (from Phase 2, now blocks Phase-4 evidence):**
-  the only trained model `XAU_USD/H1 v1` has **no predictive edge** — OOF AUC
-  0.51, brier_cal 0.23, trained on ~6 months / 2,121 candidates. It is a
-  plumbing/smoke artifact only. **Retrain on ≥18 months H1** (via the
-  train→promote flow, `PHASE2_TESTING_GUIDE.md` §E) before any backtest or
-  ablation result is treated as meaningful — a champion with `has_candidate=true`
-  is what makes the agent graph (and therefore the agentic backtest runner)
-  actually fire.
-- **Known seams deliberately open (from Phase 3, several are Phase-4 targets):**
-  - **Economic calendar:** no vendor wired — the blackout rule records
-    'unavailable' and passes. QN-051 (PIT news/sentiment in backtests) and live
-    trading want a real `CalendarProvider`; the NFP fixture defines expected
-    behaviour.
-  - **Dashboard kill-switch button:** visible no-op until Phase-5 auth (FE-033);
-    the API is the operator interface for now.
-  - **2FA:** `twoFactorCode` accepted + audited but unverified until BE-036
-    (Phase 5); activation is never blocked on it.
-  - **Broker equity sync:** account state = `ACCOUNT_BASELINE_EQUITY` + realized
-    P&L. Fine for paper/backtest; revisit before live.
-- **Next:** clear the Phase-3 runtime gate above, then open Phase 4 with the
-  supervision loop (BE-080/081) and the backtest harness (QN-050…). Per the
-  PRD build order and PHASE3_TESTING_GUIDE §6, the vectorbt engine needs the
-  live champion-model flow working, so validate that first.
+     (+ `@fx/llm` build) — node-api resolves these via dist at runtime.
+  4. Root `pnpm typecheck / test / lint` — the Phase-3 red-team suite and all
+     Phase-4 vitest suites (supervision gate/exits, agentic-runner determinism +
+     reconciliation, llm-cache, backtests worker) are unrun in the sandbox.
+  5. Runtime drills: Phase-3 risk-gate E2E + kill-switch <2s timed activate
+     ([`PHASE3_TESTING_GUIDE.md`](PHASE3_TESTING_GUIDE.md)); Phase-4 supervision
+     drill (gate_skip zero-cost + a layered exit) and one backtest/agentic run
+     against real cached candles + a **retrained** champion
+     ([`PHASE4_TESTING_GUIDE.md`](PHASE4_TESTING_GUIDE.md) §D–§G).
+  6. **Commit Phase 4** once its gate passes — suggested:
+     `feat(lifecycle): Step 4.1 supervision + Step 4.2 backtest harness (BE-080/081, QN-050..056, BE-090)`.
+     Phases 1–3 are already committed (Step 3.3 = `c3b0051`, 3.1/3.2 =
+     `8ef34fe` / `975c2c8`); Phase 4 is the only uncommitted work in the tree.
+- **Carried-forward known issue (from Phase 2 — blocks meaningful dashboard
+  numbers):** the only trained model `XAU_USD/H1 v1` has **no predictive edge**
+  (OOF AUC 0.51, ~6 months / 2,121 candidates) — a plumbing/smoke artifact
+  only. **Retrain on ≥18 months H1** (train→promote flow,
+  [`PHASE2_TESTING_GUIDE.md`](PHASE2_TESTING_GUIDE.md) §E) before the quant
+  dashboard (FE-090), calibration curves, or backtest results (FE-080) show
+  anything worth trusting. A champion with `has_candidate=true` is also what
+  makes the live agent debate viewer (FE-060) actually fire.
+- **Next:** close the carried-forward runtime gate above (it is a hard
+  prerequisite — the dashboard renders live state, so the live path must work
+  first), then open Phase 5 with Step 5.1 (auth backend + 2FA) since every
+  user-facing surface hangs off it (BE-030 replaces the Phase-1 internal-token
+  stand-in behind the same `RequestContext`).
 
-## Phase 4 scope (from `FX_PRD.md` §8 — build order)
+## Phase 5 scope (from `FX_PRD.md` §9 — build order)
 
-**Step 4.1 — Supervision**
-- BE-080 — Supervision queue + deterministic gate (LLM only on material change).
-- BE-081 — Layered exit system.
+**Step 5.1 — Auth backend + 2FA**
+- BE-030 — NextAuth JWT verification middleware (replaces the Phase-1 stand-in
+  behind the same `RequestContext`).
+- BE-031 — User upsert on sign-in.
+- BE-032 / BE-033 — Email/password registration + login.
+- BE-034 — Email verification + password-reset tokens.
+- BE-035 — Invite-code validation + CRUD.
+- BE-036 — TOTP 2FA enroll/verify + step-up flag + recovery codes (finally
+  verifies the `twoFactorCode` accepted-but-unchecked seam from Phase 3).
+- BE-037 — Account linking (Google ↔ credentials).
+- FE-030 — Google OAuth sign-in (NextAuth v5).
+- FE-031 — Email/password registration with invite code.
+- FE-032 — Email/password sign-in.
+- FE-033 — Forgot-password + reset flow.
+- FE-034 — Email-verification pending UX.
+- FE-035 — TOTP 2FA enrollment + step-up modal (+ recovery codes).
+- FE-036 — Account settings (link Google, change password).
 
-**Step 4.2 — Backtesting & validation harness**
-- QN-050 — vectorbt backtest engine (quant-core path; spread/slippage/swap/
-  rollover/gap modelled; P-threshold sweep 0.55–0.70, target 0.60).
-- QN-051 — Point-in-time news/sentiment in backtests (`published_at <= bar_ts`
-  leakage test).
-- QN-056 — Event-driven agentic backtest runner (strictly sequential bars;
-  incremental deterministic memory rebuild; **same LangGraph code path** via
-  `TRADING_MODE=backtest`; reconciles vs vectorbt on the quant-only path).
-- QN-052 — Three execution modes (quant-only, cached-LLM, live-LLM); cache keyed
-  on (prompt template version + full input bundle incl. `retrieved_memory_ids`).
-- QN-053 — Purged/embargoed OOS validation suite (purged CV, deflated Sharpe, MC
-  drawdown, bootstrap p-value → `NOT VALIDATED` blocks live promotion).
-- QN-054 — Ablation harness (quant-only vs +sentiment vs +full; debate-round
-  sweep 0/1/2 × regime-uncertainty; memory on/off).
-- QN-055 — REST endpoints for calibration & regime (`/models/{id}/calibration`,
-  `/regime/{instrument}`). *(PRD tags this Phase 5; built here if convenient —
-  confirm ordering.)*
-- BE-090 — Backtest trigger + results API (`POST /backtests`, `GET
-  /backtests/:id` → metrics, OOS split, validation verdict, ablation).
-- FE-080 — Backtest config + results UI.
+**Step 5.2 — Dashboard**
+- FE-041 — AppShell navigation (the surface FE-080 and every operator page hang
+  off).
+- FE-040 — Operator home (`/dashboard`).
+- FE-042 — System health strip (circuit breaker, liquidity regime, session
+  labels, `model_downgraded`, gap-flatten arming — v2.2 machinery).
+- FE-050 — Charts page (Lightweight Charts).
+- FE-060 — Live agent debate viewer (incl. debate depth + memory inspection).
+- FE-070 — Trades history with provenance.
+- FE-080 — Backtest config + results UI (**deferred in from Phase 4**; consumes
+  BE-090's REST/WS surface).
+- FE-090 — Quant dashboard (calibration, regimes — consumes the QN-055
+  `/models/{…}/calibration` + `/regime/{instrument}` endpoints already built in
+  Phase 4).
+- FE-100 — Settings page (risk params, clustering, session multipliers,
+  per-instrument limits).
+- FE-101 — Economic calendar.
+- FE-102 — Audit-log viewer.
 
-**Suggested build order:** BE-080 → BE-081 (supervision first — smallest, rides
-existing paper path), then QN-050 (vectorbt core, the dependency root for the
-rest), QN-051, QN-053, then QN-056 (agentic runner, depends on QN-050 +
-BE-062/064/066), QN-052/QN-054 (modes + ablation on top of the runner), then
-BE-090 + FE-080 to surface results. QN-055 is a small analytics-endpoint add.
+**Step 5.3 — Settings & notifications backend**
+- BE-100 — Settings CRUD API.
+- BE-101 — Live-promotion gate (enforces the QN-053 `NOT VALIDATED` block on
+  promoting a model to live — the Phase-4 validation verdict finally becomes a
+  gate here).
+- BE-110 — Economic calendar service (wires the `CalendarProvider` seam left
+  open since Phase 3; unblocks `pre_news_flatten` and the supervision
+  news-blackout signal, which currently record `calendar_unavailable` and pass).
+- BE-115 — Telegram bot for trade events.
+- BE-116 — Resend email digests.
+- BE-117 — WS event-emitter helper.
+- BE-118 — Twilio SMS for critical alerts.
 
-## Phase-4 specific context (seams already built in earlier phases)
+**Step 5.4 — Realtime, polish, accessibility**
+- FE-120 — WebSocket subscription + toasts (incl. partial-fill notifications).
+- FE-121 — Graceful error states.
+- FE-130 — Mobile-first safety controls (kill-switch reachable on phone).
+- FE-131 — WCAG 2.2 AA on core flows.
 
-- **Single code path (design principle #2):** the LangGraph graph that QN-056
-  drives in backtest is the SAME code as paper/live — selected by
-  `TRADING_MODE=backtest` (BE-003, one env flag everywhere). No forked backtest
-  graph. The agentic runner must rebuild memory incrementally (empty at bar 0,
-  reflections written as the run progresses) and **never read live memory**.
-- **Entry gate (ADR-010) is reused in backtest:** `gate_skip` bars must incur
-  zero LLM/cache calls in the runner too; gate-skip rate is a reported metric
-  (QN-056 AC). The gate already exists in the signals worker (BE-066) and the
-  supervision gate (BE-080) mirrors it — LLM only on material change.
-- **Deterministic quant core stays the reconciliation anchor:** QN-050's
-  vectorbt engine is the quant-core-only path; QN-056's runner must reconcile
-  its quant-only configuration against it within tolerance (correctness
-  cross-check). No LLM ever touches `app/quant/` (§10) — agents refine/confirm/
-  veto, they don't generate numbers.
-- **Cost-model inputs already exist:** DST-aware session/rollover/gap flags and
-  spread/liquidity labels (QN-047), correlation clusters (QN-048), and the
-  calibrated `challenger_probability` all land in the pipeline result the
-  backtest engine consumes. Wednesday triple-swap (XAU) and weekend-gap
-  beyond-stop behaviour are already modelled deterministically in the risk gate;
-  QN-050 must model them on the P&L side.
-- **Risk gate is the final authority in backtest too:** `packages/risk-gate`
-  `DeterministicRiskGate` is pure and fixture-driven — the backtest runner feeds
-  it a `RiskGateContext` per bar exactly as the live worker does. Kill-switch /
-  halt state is not exercised in backtest but the gate's other §10 rules are.
-- **Supervision inputs:** open trades live in `trade_intents`/`trades`; the
-  layered exit system (BE-081) and supervision gate (BE-080) act on open
-  positions and the same gRPC execution channel the kill-switch close-out uses.
-- **Memory reproducibility:** `agent_memory` write/merge/cap logic (BE-064) is
-  already code-deterministic (reflections composed by CODE, not an LLM;
-  embedding provider env-pinned per row). QN-052 cached-LLM reproducibility
-  depends on this holding — cache key MUST include `retrieved_memory_ids`.
+**Suggested build order:** Step 5.1 first — auth is the root dependency for
+every user-facing surface (BE-030 → BE-031 → registration/login → 2FA → OAuth
+linking, with the matching FE pages). Then Step 5.2 opens with FE-041 (AppShell)
+since every page hangs off it, then the read-only pages (FE-040/042/050/070)
+before the interactive ones (FE-060/080/090/100). Step 5.3 backend can proceed
+in parallel with 5.2 (settings CRUD + notifications + the calendar service that
+unblocks the news seams). Step 5.4 (realtime/polish/a11y) lands last across the
+finished surfaces. BE-101 (live-promotion gate) should land before any live
+promotion is attempted.
 
-## Standing decisions (carried from Phases 1–3 — don't re-litigate without cause)
+## Phase-5 specific context (seams already built in earlier phases)
+
+- **Auth stand-in to replace, not rebuild:** Phase 1 shipped an internal
+  service-token auth stand-in behind a `RequestContext` (BE-013) + audit
+  middleware. BE-030 swaps in real NextAuth JWT verification *behind the same
+  `RequestContext`* — downstream handlers should not need to change. Broker
+  creds are seeded via env/CLI until the settings write path (BE-100) arrives.
+- **2FA seam is half-built:** the kill-switch activate path already accepts +
+  audits a `twoFactorCode` but never verifies it (unchecked until BE-036).
+  Phase 5 makes it real; activation must still never be *blocked* on 2FA until
+  the enroll/verify flow exists.
+- **Kill-switch button is a visible no-op today:** the dashboard kill-switch
+  (FE-033-era) is a UI placeholder until auth lands — the REST/gRPC kill-switch
+  is the operator interface for now. FE-130 makes it reachable on mobile once
+  auth + AppShell exist.
+- **Backtest results already have an API (BE-090):** `POST /backtests`,
+  `GET /backtests`, `GET /backtests/:id` (metrics, OOS verdict, ablation,
+  trades) + the `backtests` WS channel (`backtest:finished` / `backtest:failed`)
+  are live from Phase 4. FE-080 is a pure consumer — no new backend needed.
+- **Quant analytics endpoints already exist (QN-055):**
+  `GET /models/{instrument}/{tf}/{version}/calibration` and
+  `GET /regime/{instrument}` were built in Phase 4; FE-090 consumes them
+  directly (404 if no such model version, 422 if too few bars).
+- **Economic calendar is the notable open backend:** no vendor is wired — the
+  blackout rule + `pre_news_flatten` record `calendar_unavailable` and pass. The
+  NFP fixture defines expected behaviour; BE-110 is where a real
+  `CalendarProvider` lands and FE-101 surfaces it.
+- **Validation verdict becomes a gate here:** QN-053's `VALIDATED |
+  NOT VALIDATED` is computed in Phase 4 but only *reported*; BE-101 turns it into
+  an enforced live-promotion gate.
+- **WS event plumbing is partly in place:** `publishWsEvent(…)` already emits
+  `backtests` and supervision/agent-run events; BE-117 generalises the emitter
+  and FE-120 subscribes with toasts.
+- **Broker equity sync still a seam:** account equity =
+  `ACCOUNT_BASELINE_EQUITY` + realized P&L (Phases 2–4). Fine for paper/backtest
+  and for the dashboard's equity strip; revisit before live (Phase 6).
+
+## Standing decisions (carried from Phases 1–4 — don't re-litigate without cause)
 
 - **DB image:** `timescale/timescaledb-ha:pg18-ts2.28` — community TimescaleDB
   (CAGGs/compression/retention) + pgvector. Identical image dev and prod; prod
@@ -145,15 +187,14 @@ BE-090 + FE-080 to surface results. QN-055 is a small analytics-endpoint add.
 - **Quant service:** `services/quant` is a uv-managed Python 3.13 FastAPI +
   gRPC service (Step 1.5). One process serves both planes: REST `:5001`
   (`/healthz`; moved off 5000 — see Conventions), gRPC `:50051` (std
-  `grpc.health.v1` + the now-real QuantService RPCs). Its `package.json` exists
-  only so turbo `dev` boots it (`uv run python -m app`) — Python deps are never
-  managed by pnpm; lint/type/test run via uv in the CI `quant` job, not turbo.
-  Generated code (`app/contracts/`, `app/proto_gen/`) is committed and
-  drift-checked; regenerate via `scripts/gen_contracts.py` +
-  `scripts/gen_proto.py`, never hand-edit.
+  `grpc.health.v1` + the QuantService RPCs). Its `package.json` exists only so
+  turbo `dev` boots it (`uv run python -m app`) — Python deps are never managed
+  by pnpm; lint/type/test run via uv in the CI `quant` job, not turbo. Generated
+  code (`app/contracts/`, `app/proto_gen/`) is committed and drift-checked;
+  regenerate via `scripts/gen_contracts.py` + `scripts/gen_proto.py`, never
+  hand-edit.
 - **`TRADING_MODE`** (`backtest|paper|live`): one env flag, one identical code
-  path everywhere (BE-003) — this is the mechanism QN-056 uses to run the live
-  graph in backtest. Env validation is fail-fast Zod in
+  path everywhere (BE-003). Env validation is fail-fast Zod in
   `apis/node-api/src/env.ts`; every new key MUST also go into `.env.example`
   (CI checks it via `scripts/check-env.mjs --ci`).
 - **Redis:** AOF `everysec` always (BullMQ durability) — set in both compose and stack.
@@ -164,8 +205,10 @@ BE-090 + FE-080 to surface results. QN-055 is a small analytics-endpoint add.
   (`docker build -f apps/dashboard/Dockerfile .`). Dashboard uses Next.js
   `output: 'standalone'`; server entry is `apps/dashboard/server.js` inside the
   standalone dir.
-- **Phase 1 auth:** internal service token stand-in; all user-facing auth (UI +
-  API) lands in Phase 5. Broker creds seeded via env/CLI until then.
+- **Auth:** Phase 1 shipped an internal service-token stand-in; **all
+  user-facing auth (UI + API) lands in THIS phase** (Step 5.1). BE-030 replaces
+  the stand-in behind the same `RequestContext`; broker creds are seeded via
+  env/CLI until the settings write path (BE-100).
 - **DB schema:** Prisma migrations = relational DDL only; every
   Timescale/pgvector-index object goes in `apis/node-api/prisma/timescale.sql`
   (idempotent, applied by `pnpm db:timescale` after `db:deploy`) — NEVER in a
@@ -173,18 +216,18 @@ BE-090 + FE-080 to surface results. QN-055 is a small analytics-endpoint add.
   `-- destructive-ok: <reason>` marker. Credential envelope format is
   `v1:base64(iv‖tag‖ct)` AES-256-GCM — Python quant matches it. **Migration
   files are generated, never hand-written** (project CLAUDE.md): run
-  `prisma migrate dev`; ask the operator to run it if the sandbox can't.
-- **FinBERT (`uv sync --group ml`):** the BE-062 sentiment-analyst node is the
-  first real consumer; still mock until that node actually reads scores.
-  Sentiment *accuracy* is first exercised by the Phase-4 backtests
-  (QN-051/QN-054), so this is where real FinBERT may finally be needed.
+  `prisma migrate dev`; ask the operator to run it if the sandbox can't. The
+  Phase-5 auth tables (users, sessions, verification/reset tokens, invite codes,
+  2FA/recovery, account links) will be the next real migration.
+- **FinBERT (`uv sync --group ml`):** first real consumer is the BE-062
+  sentiment-analyst node; sentiment *accuracy* is first exercised by the Phase-4
+  backtests (QN-051/QN-054). Still mock until a node actually reads real scores.
 - **Deterministic quant core stays LLM-free (§10):** no LLM ever touches
   `app/quant/` — agents *refine/confirm/veto* the quant candidate, they don't
   generate the numbers. The graph fires only on quant candidates (ADR-010) and
-  the risk gate (BE-070) is the final deterministic authority. This invariant is
-  what makes the QN-056 quant-only reconciliation against QN-050 possible.
+  the risk gate (BE-070) is the final deterministic authority.
 
-## Conventions (carried from Phases 1–3)
+## Conventions (carried from Phases 1–4)
 
 - pnpm 9 (corepack) + Turborepo; Node 22 (`.nvmrc`); Biome for lint/format; Vitest.
 - Workspaces: `apps/*`, `apis/*`, `packages/*`, `workers/*`, `services/*`.
@@ -202,7 +245,7 @@ BE-090 + FE-080 to surface results. QN-055 is a small analytics-endpoint add.
 
 ## Entries
 
-<!-- Append Phase 4 step entries below, newest first. -->
+<!-- Append Phase 5 step entries below, newest first. -->
 
 ---
 

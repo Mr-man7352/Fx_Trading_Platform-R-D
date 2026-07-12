@@ -48,7 +48,14 @@ export interface NotificationJob {
   event?: string;
 }
 
-/** BE-051 — Phase-3 supervision advisory (producer only). */
+/** BE-080 — one gated supervision pass over one open trade (Step 4.1). */
 export interface SupervisionJob {
   tradeId: string;
+}
+
+/** BE-090 — backtest execution queue (Step 4.2). */
+export const BACKTESTS_QUEUE = 'backtests';
+
+export interface BacktestJob {
+  backtestId: string;
 }

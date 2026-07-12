@@ -49,6 +49,7 @@ const researcherOut = { argument: 'Trend continuation likely.', confidence: 0.65
 const traderOut = { action: 'ENTER', direction: 'long', confidence: 0.66 };
 const riskOut = { approve: true, concerns: ['news blackout in 6h'] };
 const pmOut = { decision: 'APPROVE', rationale: 'Consensus with quant; risk accepted.' };
+const supervisorOut = { action: 'HOLD', confidence: 0.6, rationale: 'Within plan; no action.' };
 
 const specialists = {
   technical: specialistOut,
@@ -138,6 +139,34 @@ const goldenInputs: Record<AgentRole, Record<string, unknown>> = {
       degradedRoles: [],
     },
   },
+  // BE-080 — supervisor bundle is standalone (open-trade snapshot, not ContextBase).
+  supervisor: {
+    contractVersion: AGENT_CONTRACT_VERSION,
+    role: 'supervisor',
+    trade: {
+      tradeId: '11111111-1111-4111-8111-111111111111',
+      instrument: 'EUR_USD',
+      side: 'long',
+      units: 10_000,
+      entryPrice: 1.0842,
+      currentPrice: 1.0868,
+      stopLoss: 1.0791,
+      takeProfit: 1.0944,
+      openedAt: '2026-07-09T14:05:00Z',
+      holdingHours: 6.5,
+      rMultiple: 0.51,
+      partialTaken: false,
+    },
+    market: {
+      sessionLabel: 'NEW_YORK',
+      liquidityRegime: 'NORMAL',
+      tripleSwapAhead: false,
+      weekendGapWindow: false,
+      calendarAvailable: true,
+      upcomingHighImpactEvent: false,
+    },
+    changeReasons: ['price crossed +0.5R'],
+  },
 };
 
 const goldenOutputs: Record<AgentRole, unknown> = {
@@ -149,11 +178,12 @@ const goldenOutputs: Record<AgentRole, unknown> = {
   trader: traderOut,
   risk_team: riskOut,
   pm: pmOut,
+  supervisor: supervisorOut,
 };
 
 describe('AgentContextContract (BE-069)', () => {
-  it('defines schemas for all 8 roles', () => {
-    expect(Object.keys(AgentContextContract)).toHaveLength(8);
+  it('defines schemas for all 9 roles', () => {
+    expect(Object.keys(AgentContextContract)).toHaveLength(9);
   });
 
   for (const role of Object.keys(AgentContextContract) as AgentRole[]) {

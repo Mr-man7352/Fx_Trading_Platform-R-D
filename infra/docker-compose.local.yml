@@ -231,6 +231,94 @@ services:
       quant:
         condition: service_started
 
+  worker-supervision:
+    # BE-080/081 — supervision worker: a repeatable `supervision-scan` job
+    # (SUPERVISION_INTERVAL_MS) enumerates open trades and fans out one gated
+    # pass each → layered deterministic exits (BE-081) FIRST → material-change
+    # gate (BE-080; no change ⇒ gate_skip, llmCost:0) → ONE LLM supervisor call
+    # (advisory + risk-reducing only). Closes over the same quant gRPC channel
+    # the kill-switch uses. Same image as `api`; only the command differs.
+    # Keyless LLM env ⇒ layered exits + gate still run, material changes are
+    # audited without an LLM read. Inert in backtest mode / while halted.
+    build:
+      context: ..
+      dockerfile: apis/node-api/Dockerfile
+    command: ["node", "dist/workers/supervision-main.js"]
+    environment:
+      NODE_ENV: production
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GIT_COMMIT: ${GIT_COMMIT:-local}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-ZGV2LW9ubHktY3JlZGVudGlhbHMta2V5LTMyYnl0ZXM=}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
+      REDIS_URL: redis://redis:6379
+      QUANT_GRPC_URL: quant:50051
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_MONTHLY_COST_CAP_USD: ${LLM_MONTHLY_COST_CAP_USD:-200}
+      # BE-081 dd_halt layer reads the same daily-loss halt threshold as §10.
+      RISK_DAILY_DD_HALT_PCT: ${RISK_DAILY_DD_HALT_PCT:-0.05}
+      ACCOUNT_BASELINE_EQUITY: ${ACCOUNT_BASELINE_EQUITY:-10000}
+      SUPERVISION_INTERVAL_MS: ${SUPERVISION_INTERVAL_MS:-60000}
+      SUPERVISION_TIME_STOP_HOURS: ${SUPERVISION_TIME_STOP_HOURS:-72}
+      SUPERVISION_ADVERSE_R: ${SUPERVISION_ADVERSE_R:-0.75}
+      SUPERVISION_STAGE_BUDGET_MS: ${SUPERVISION_STAGE_BUDGET_MS:-15000}
+      # BE-140 — empty ⇒ tracing off. In-network Tempo (observability profile).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      quant:
+        condition: service_started
+
+  worker-backtests:
+    # BE-090 — backtests worker: consumes the `backtests` queue. kind=quant
+    # proxies to the QN-050 quant REST engine; kind=agentic runs the in-process
+    # QN-056 runner (SAME BE-062 graph via TRADING_MODE=backtest) and, for the
+    # quant-only path, reconciles against the engine (QN-056 AC). Pinned to
+    # TRADING_MODE=backtest regardless of the stack's paper/live mode: agentic
+    # runs REQUIRE it and quant runs are mode-agnostic. Simulated execution
+    # only — this worker never touches the broker. Same image as `api`.
+    build:
+      context: ..
+      dockerfile: apis/node-api/Dockerfile
+    command: ["node", "dist/workers/backtests-main.js"]
+    environment:
+      NODE_ENV: production
+      TRADING_MODE: backtest
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      GIT_COMMIT: ${GIT_COMMIT:-local}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:-ZGV2LW9ubHktY3JlZGVudGlhbHMta2V5LTMyYnl0ZXM=}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fx}:${POSTGRES_PASSWORD:-fx_dev_password}@db:5432/${POSTGRES_DB:-fx}
+      REDIS_URL: redis://redis:6379
+      # Agentic runs drive the pipeline over gRPC; quant runs hit the REST engine.
+      QUANT_GRPC_URL: quant:50051
+      QUANT_HTTP_URL: http://quant:5001
+      QUANT_BACKTEST_TIMEOUT_MS: ${QUANT_BACKTEST_TIMEOUT_MS:-600000}
+      BACKTEST_RISK_PCT: ${BACKTEST_RISK_PCT:-0.01}
+      LLM_CACHE_DIR: ${LLM_CACHE_DIR:-var/llm-cache}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_MONTHLY_COST_CAP_USD: ${LLM_MONTHLY_COST_CAP_USD:-200}
+      AGENT_DEBATE_ROUNDS: ${AGENT_DEBATE_ROUNDS:-1}
+      # BE-140 — empty ⇒ tracing off. In-network Tempo (observability profile).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      quant:
+        condition: service_started
+
   # QN-020 — OANDA price stream → `market-ticks`. Opt-in (needs OANDA creds):
   #   docker compose -f infra/docker-compose.local.yml --profile ingest up -d quant-stream
   quant-stream:

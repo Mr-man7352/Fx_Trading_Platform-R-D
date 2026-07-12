@@ -150,6 +150,58 @@ services:
     networks: [backend]
     deploy: *zero_downtime
 
+  worker-supervision:
+    # BE-080/081 — supervision worker: repeatable scan over open trades →
+    # layered deterministic exits (BE-081) FIRST → material-change gate
+    # (BE-080; no change ⇒ gate_skip, llmCost:0) → ONE advisory, risk-reducing
+    # LLM supervisor call. Closes over the same quant gRPC channel the
+    # kill-switch uses. Inert in backtest mode / while halted.
+    image: ${REGISTRY}/fx-node-api:${TAG}
+    command: ["node", "dist/workers/supervision-main.js"]
+    environment:
+      <<: *worker_env
+      QUANT_GRPC_URL: quant:50051
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_MONTHLY_COST_CAP_USD: ${LLM_MONTHLY_COST_CAP_USD:-200}
+      # BE-081 dd_halt layer reads the same daily-loss halt threshold as §10.
+      RISK_DAILY_DD_HALT_PCT: ${RISK_DAILY_DD_HALT_PCT:-0.05}
+      ACCOUNT_BASELINE_EQUITY: ${ACCOUNT_BASELINE_EQUITY:-10000}
+      SUPERVISION_INTERVAL_MS: ${SUPERVISION_INTERVAL_MS:-60000}
+      SUPERVISION_TIME_STOP_HOURS: ${SUPERVISION_TIME_STOP_HOURS:-72}
+      SUPERVISION_ADVERSE_R: ${SUPERVISION_ADVERSE_R:-0.75}
+      SUPERVISION_STAGE_BUDGET_MS: ${SUPERVISION_STAGE_BUDGET_MS:-15000}
+    networks: [backend]
+    deploy: *zero_downtime
+
+  worker-backtests:
+    # BE-090 — backtests worker: consumes the `backtests` queue. kind=quant
+    # proxies to the QN-050 quant REST engine; kind=agentic runs the in-process
+    # QN-056 runner (SAME BE-062 graph via TRADING_MODE=backtest) and reconciles
+    # the quant-only path against the engine. Pinned to TRADING_MODE=backtest
+    # regardless of the stack's paper/live mode: agentic runs REQUIRE it and
+    # quant runs are mode-agnostic. Simulated execution only — never the broker.
+    image: ${REGISTRY}/fx-node-api:${TAG}
+    command: ["node", "dist/workers/backtests-main.js"]
+    environment:
+      <<: *worker_env
+      TRADING_MODE: backtest
+      QUANT_GRPC_URL: quant:50051
+      QUANT_HTTP_URL: http://quant:5001
+      QUANT_BACKTEST_TIMEOUT_MS: ${QUANT_BACKTEST_TIMEOUT_MS:-600000}
+      BACKTEST_RISK_PCT: ${BACKTEST_RISK_PCT:-0.01}
+      LLM_CACHE_DIR: ${LLM_CACHE_DIR:-var/llm-cache}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_MONTHLY_COST_CAP_USD: ${LLM_MONTHLY_COST_CAP_USD:-200}
+      AGENT_DEBATE_ROUNDS: ${AGENT_DEBATE_ROUNDS:-1}
+    networks: [backend]
+    deploy: *zero_downtime
+
   redis:
     image: redis:8-alpine
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]

@@ -20,6 +20,7 @@ import type { PrismaClient } from './db.js';
 import type { Env } from './env.js';
 import { EventBus } from './events.js';
 import { registerAuditRoutes } from './routes/audit.js';
+import { type BacktestRouteDeps, registerBacktestRoutes } from './routes/backtests.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { type KillSwitchRouteDeps, registerKillSwitchRoutes } from './routes/kill-switch.js';
 import { registerMarketRoutes } from './routes/market.js';
@@ -49,6 +50,11 @@ export interface BuildAppOptions {
    * `/settings/kill-switch` routes answer 503 (unit tests, OpenAPI emit).
    */
   killSwitch?: KillSwitchRouteDeps | null;
+  /**
+   * BE-090 — backtest queue deps. server.ts provides them; without them the
+   * `/backtests` routes answer 503 (unit tests, OpenAPI emit).
+   */
+  backtests?: BacktestRouteDeps | null;
 }
 
 /**
@@ -185,6 +191,7 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
   registerMarketRoutes(app); // BE-042/BE-045 — /market/{instruments,candles,news}
   registerSignalsRoutes(app); // BE-067 — GET /signals (agent-cycle summaries)
   registerKillSwitchRoutes(app, opts.killSwitch ?? null); // BE-072/073 — /settings/kill-switch
+  registerBacktestRoutes(app, opts.backtests ?? null); // BE-090 — /backtests (Step 4.2)
 
   return app;
 }

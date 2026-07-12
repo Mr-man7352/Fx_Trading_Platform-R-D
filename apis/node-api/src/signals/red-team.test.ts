@@ -47,6 +47,7 @@ const GOLDEN: Record<AgentRole, string> = {
   trader: '{"action":"ENTER","direction":"long","confidence":0.66}',
   risk_team: '{"approve":true,"concerns":["event risk friday"]}',
   pm: '{"decision":"APPROVE","rationale":"coherent bull case"}',
+  supervisor: '{"action":"HOLD","confidence":0.6,"rationale":"within plan, no action"}',
 };
 
 const BUDGETS: GraphBudgets = {

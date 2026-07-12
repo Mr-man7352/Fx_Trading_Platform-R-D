@@ -11,7 +11,12 @@ import { createPrismaClient } from './db.js';
 import { loadEnv } from './env.js';
 import { type KillSwitchDb, KillSwitchStore } from './execution/kill-switch.js';
 import { QuantExecutionClient } from './execution/quant-client.js';
-import { NOTIFICATIONS_QUEUE, type NotificationJob } from './workers/queues.js';
+import {
+  BACKTESTS_QUEUE,
+  type BacktestJob,
+  NOTIFICATIONS_QUEUE,
+  type NotificationJob,
+} from './workers/queues.js';
 import { startWsBridge } from './ws-bridge.js';
 
 const SHUTDOWN_TIMEOUT_MS = 30_000;
@@ -28,6 +33,10 @@ const cmdRedis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const notificationsQueue = new Queue<NotificationJob>(NOTIFICATIONS_QUEUE, {
   connection: cmdRedis as unknown as ConnectionOptions,
 });
+// BE-090 — backtest jobs are produced here, consumed by the backtests worker.
+const backtestsQueue = new Queue<BacktestJob>(BACKTESTS_QUEUE, {
+  connection: cmdRedis as unknown as ConnectionOptions,
+});
 const app = await buildApp(env, {
   prisma,
   killSwitch: {
@@ -42,6 +51,7 @@ const app = await buildApp(env, {
       );
     },
   },
+  backtests: { queue: backtestsQueue },
 });
 
 const wsRedis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
@@ -50,6 +60,7 @@ app.addHook('onClose', async () => {
   stopWsBridge();
   wsRedis.disconnect();
   await notificationsQueue.close();
+  await backtestsQueue.close();
   cmdRedis.disconnect();
 });
 

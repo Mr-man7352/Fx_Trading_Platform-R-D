@@ -1,10 +1,11 @@
 # DEVLOG — Phase 3 (Intelligence)
 
 > **ARCHIVE (Phase 3 code-complete 2026-07-10 — NOT yet runtime-tested).** This
-> file is now the frozen Phase-3 record; live development continues in
-> [`DEVLOG_current.md`](DEVLOG_current.md) (Phase 4 — Lifecycle). The Standing
-> decisions + Conventions below are carried forward into the Phase-4 log as the
-> single live source of truth. **Phase-3's runtime proofs and pending human
+> file is now the frozen Phase-3 record; its successor Phase 4 is likewise
+> frozen in [`DEVLOG_phase4.md`](DEVLOG_phase4.md) (Lifecycle) and live
+> development continues in [`DEVLOG_current.md`](DEVLOG_current.md) (Phase 5 —
+> Surface). The Standing decisions + Conventions below are carried forward
+> through those later logs as the single live source of truth. **Phase-3's runtime proofs and pending human
 > actions are still OUTSTANDING** — the code shipped but nothing was installed,
 > migrated, built, tested, or drilled (see the Current state section below and
 > [`PHASE3_TESTING_GUIDE.md`](PHASE3_TESTING_GUIDE.md)); Step 3.3 is also still

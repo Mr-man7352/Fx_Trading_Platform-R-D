@@ -34,6 +34,7 @@ const GOLDEN: Record<AgentRole, string> = {
   trader: '{"action":"ENTER","direction":"long","confidence":0.66}',
   risk_team: '{"approve":true,"concerns":[]}',
   pm: '{"decision":"APPROVE","rationale":"coherent"}',
+  supervisor: '{"action":"HOLD","confidence":0.6,"rationale":"within plan, no action"}',
 };
 
 function fakeLlm(overrides: Partial<Record<AgentRole, string>> = {}) {
