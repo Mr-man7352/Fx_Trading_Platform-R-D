@@ -21,6 +21,7 @@ import type { Env } from './env.js';
 import { EventBus } from './events.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { type KillSwitchRouteDeps, registerKillSwitchRoutes } from './routes/kill-switch.js';
 import { registerMarketRoutes } from './routes/market.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerSignalsRoutes } from './routes/signals.js';
@@ -42,6 +43,12 @@ export interface BuildAppOptions {
    * Without one (unit tests, OpenAPI emit) the Step-1.3 LogAuditSink is used.
    */
   prisma?: PrismaClient | null;
+  /**
+   * BE-072 — kill-switch dependencies (Redis, gRPC execution client,
+   * notifications). server.ts always provides them; without them the
+   * `/settings/kill-switch` routes answer 503 (unit tests, OpenAPI emit).
+   */
+  killSwitch?: KillSwitchRouteDeps | null;
 }
 
 /**
@@ -177,6 +184,7 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
   registerAuditRoutes(app); // BE-130 — GET /audit (503 without a DB client)
   registerMarketRoutes(app); // BE-042/BE-045 — /market/{instruments,candles,news}
   registerSignalsRoutes(app); // BE-067 — GET /signals (agent-cycle summaries)
+  registerKillSwitchRoutes(app, opts.killSwitch ?? null); // BE-072/073 — /settings/kill-switch
 
   return app;
 }

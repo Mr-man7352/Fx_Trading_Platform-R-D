@@ -145,7 +145,7 @@ export function fakeRedis(): FakeRedisRig {
       store.set(k, String(v));
       return 'OK';
     },
-    del: async (k: string) => (store.delete(k) ? 1 : 0),
+    del: async (...keys: string[]) => keys.reduce((n, k) => n + (store.delete(k) ? 1 : 0), 0),
     incr: async (k: string) => {
       const n = Number(store.get(k) ?? '0') + 1;
       store.set(k, String(n));

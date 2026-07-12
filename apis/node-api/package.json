@@ -2,7 +2,7 @@
   "name": "@fx/node-api",
   "version": "0.0.1",
   "private": true,
-  "description": "Fastify modular monolith — Phase 1 shell (BE-010…015) + DB schema (Step 1.4)",
+  "description": "Fastify modular monolith \u2014 Phase 1 shell (BE-010\u2026015) + DB schema (Step 1.4)",
   "type": "module",
   "scripts": {
     "dev": "prisma generate && tsx watch src/server.ts",
@@ -40,6 +40,7 @@
     "@fastify/swagger-ui": "^6.0.0",
     "@fastify/websocket": "^11.2.0",
     "@fx/llm": "workspace:*",
+    "@fx/risk-gate": "workspace:*",
     "@fx/types": "workspace:*",
     "@grpc/grpc-js": "^1.12.6",
     "@grpc/proto-loader": "^0.7.13",

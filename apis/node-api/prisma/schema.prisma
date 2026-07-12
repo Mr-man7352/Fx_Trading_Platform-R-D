@@ -510,6 +510,29 @@ model CorrelationClusterSet {
   @@map("correlation_clusters")
 }
 
+/// BE-073 — kill-switch state (ADR-012): POSTGRES IS THE SOURCE OF TRUTH;
+/// the Redis flag (`kill-switch:active`) is a fast-path cache only. Workers
+/// re-hydrate from this table on boot and on every cache miss — a Redis
+/// restart can never silently clear the flag. One row per activation
+/// (history retained for audit); the current state is the latest row.
+/// `close_out_status`: closing | flat | failed — reports CLOSING until
+/// broker-confirmed flat (the 60s reconciler is the backstop).
+model KillSwitchState {
+  id             String    @id @default(uuid()) @db.Uuid
+  active         Boolean
+  reason         String
+  activatedBy    String    @map("activated_by")
+  activatedAt    DateTime  @default(now()) @map("activated_at") @db.Timestamptz(6)
+  deactivatedBy  String?   @map("deactivated_by")
+  deactivatedAt  DateTime? @map("deactivated_at") @db.Timestamptz(6)
+  closeOutStatus String?   @map("close_out_status")
+  closeReport    Json?     @map("close_report")
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([activatedAt])
+  @@map("kill_switch_state")
+}
+
 // ─── §7.3 Auth & compliance ──────────────────────────────────────────────────
 
 enum UserRole {

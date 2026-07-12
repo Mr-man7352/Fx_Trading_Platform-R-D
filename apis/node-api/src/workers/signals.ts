@@ -14,6 +14,7 @@ import { BullMQOtel } from 'bullmq-otel';
 import { Redis } from 'ioredis';
 import { createPrismaClient, type PrismaClient } from '../db.js';
 import type { Env } from '../env.js';
+import { type KillSwitchDb, KillSwitchStore } from '../execution/kill-switch.js';
 import { MarketRepo } from '../market/repo.js';
 import { DbAccountStateProvider } from '../signals/account-state.js';
 import { AgentGraph, H1_BUDGETS } from '../signals/agent-graph.js';
@@ -22,7 +23,7 @@ import { ContextAssembler } from '../signals/context-assembler.js';
 import { PrismaLedgerSink, PrismaSpendProvider } from '../signals/llm-ledger.js';
 import { createPromptRegistry } from '../signals/prompts.js';
 import { QuantPipelineClient } from '../signals/quant-pipeline-client.js';
-import { NotImplementedRiskGate } from '../signals/risk-gate.js';
+import { DeterministicRiskGate } from '../signals/risk-gate.js';
 import {
   PrioritySemaphore,
   processSignalJob,
@@ -117,13 +118,22 @@ export function startSignalsWorker(env: Env): SignalsWorkerHandle {
     probabilityThreshold: env.RISK_PROBABILITY_THRESHOLD,
   });
 
+  // BE-073 — Postgres-hydrated kill-switch state (Redis is cache only).
+  // Re-hydrate on BOOT (story AC) as well as on every cache miss.
+  const killSwitch = new KillSwitchStore(prisma as unknown as KillSwitchDb, connection);
+  killSwitch.hydrate().catch((err) => {
+    console.warn('[signals] kill-switch boot hydration failed (will retry on cache miss):', err);
+  });
+
   const deps: SignalsWorkerDeps = {
     prisma,
     redis: connection,
     pipeline,
     assembler,
     graph,
-    riskGate: new NotImplementedRiskGate(), // BE-070 (Step 3.3) replaces this
+    // BE-070/071 — the real deterministic rule engine (final authority, §10).
+    riskGate: new DeterministicRiskGate(prisma, killSwitch, env),
+    killSwitch,
     account: new DbAccountStateProvider(prisma, env.ACCOUNT_BASELINE_EQUITY),
     memory,
     executionQueue: new Queue(EXECUTION_QUEUE, { connection: bullConnection, telemetry }),

@@ -2,7 +2,7 @@
 
 > **ARCHIVE (Phase 2 complete, 2026-07-09).** This file is now the frozen
 > Phase-2 record; live development continues in
-> [`DEVLOG_current.md`](DEVLOG_current.md) (Phase 3 — Intelligence). The
+> [`DEVLOG_phase3.md`](DEVLOG_phase3.md) (Phase 3 — Intelligence). The
 > Standing decisions + Conventions below are carried forward into the Phase-3
 > log as the single live source of truth. Pre-Phase-3 test plan:
 > [`PHASE2_TESTING_GUIDE.md`](PHASE2_TESTING_GUIDE.md).

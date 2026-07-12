@@ -5,8 +5,17 @@
     "baseUrl": ".",
     "paths": {
       "@fx/types": ["../../packages/types/src/index.ts"],
-      "@fx/llm": ["../../packages/llm/src/index.ts"]
+      "@fx/llm": ["../../packages/llm/src/index.ts"],
+      "@fx/risk-gate": ["../../packages/risk-gate/src/index.ts"]
     }
   },
-  "include": ["src", "../../packages/types/src", "../../packages/llm/src"]
+  "include": [
+    "src",
+    "../../packages/types/src",
+    "../../packages/llm/src",
+    "../../packages/risk-gate/src"
+  ],
+  // risk-gate tests are verified by the package's own tsconfig.verify.json;
+  // here they'd fail to resolve vitest (no node_modules until pnpm install).
+  "exclude": ["../../packages/risk-gate/src/**/*.test.ts"]
 }

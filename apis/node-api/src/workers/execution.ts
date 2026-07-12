@@ -19,6 +19,8 @@ export interface ExecutionDeps {
   quant: QuantExecutionClient;
   supervisionQueue: Queue<SupervisionJob>;
   notificationsQueue: Queue<NotificationJob>;
+  /** BE-073 — Postgres-hydrated kill-switch (survives a Redis flush). */
+  killSwitch?: import('../execution/kill-switch.js').KillSwitchStore | null;
   env: Env;
 }
 
@@ -49,7 +51,11 @@ export async function processExecutionJob(
     return; // idempotent — already terminal or in-flight handled
   }
 
-  if (await isExecutionHalted(deps.redis)) {
+  // Sticky Redis halt flag OR the Postgres-backed kill-switch (BE-073 — a
+  // Redis flush re-hydrates from Postgres, never silently resumes trading).
+  const halted =
+    (await isExecutionHalted(deps.redis)) || (await deps.killSwitch?.isActive()) === true;
+  if (halted) {
     console.warn(`[exec] execution HALTED — cancelling intent ${intentId}`);
     await deps.prisma.tradeIntent.update({
       where: { id: intentId },

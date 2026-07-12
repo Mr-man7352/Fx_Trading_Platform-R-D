@@ -4,10 +4,14 @@
  * guarantees graceful shutdown within 30 s of SIGTERM/SIGINT.
  */
 
+import { type ConnectionOptions, Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { buildApp } from './app.js';
 import { createPrismaClient } from './db.js';
 import { loadEnv } from './env.js';
+import { type KillSwitchDb, KillSwitchStore } from './execution/kill-switch.js';
+import { QuantExecutionClient } from './execution/quant-client.js';
+import { NOTIFICATIONS_QUEUE, type NotificationJob } from './workers/queues.js';
 import { startWsBridge } from './ws-bridge.js';
 
 const SHUTDOWN_TIMEOUT_MS = 30_000;
@@ -15,13 +19,38 @@ const SHUTDOWN_TIMEOUT_MS = 30_000;
 const env = loadEnv();
 // BE-130 — real boot always uses the DB audit sink. Connection is lazy, so a
 // down DB doesn't block boot; the first query surfaces the failure loudly.
-const app = await buildApp(env, { prisma: createPrismaClient(env) });
+const prisma = createPrismaClient(env);
+
+// BE-072 — kill-switch dependencies: a command-mode Redis client (the WS
+// bridge client below runs in subscriber mode and cannot issue commands),
+// the gRPC execution client for close-out, and the notifications queue.
+const cmdRedis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+const notificationsQueue = new Queue<NotificationJob>(NOTIFICATIONS_QUEUE, {
+  connection: cmdRedis as unknown as ConnectionOptions,
+});
+const app = await buildApp(env, {
+  prisma,
+  killSwitch: {
+    store: new KillSwitchStore(prisma as unknown as KillSwitchDb, cmdRedis),
+    quant: new QuantExecutionClient(env),
+    redis: cmdRedis,
+    notify: async (severity, title, body) => {
+      await notificationsQueue.add(
+        'alert',
+        { severity, title, body, event: 'kill_switch' },
+        { removeOnComplete: 100 },
+      );
+    },
+  },
+});
 
 const wsRedis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 const stopWsBridge = startWsBridge(wsRedis, app.eventBus);
 app.addHook('onClose', async () => {
   stopWsBridge();
   wsRedis.disconnect();
+  await notificationsQueue.close();
+  cmdRedis.disconnect();
 });
 
 await app.listen({ port: env.API_PORT, host: '0.0.0.0' });

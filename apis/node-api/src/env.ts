@@ -104,6 +104,29 @@ const EnvSchema = z.object({
   EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   /** ADR-008 — P(profitable) threshold (risk gate + QUANT_DEFAULT tiebreaker). */
   RISK_PROBABILITY_THRESHOLD: z.coerce.number().gt(0).lt(1).default(0.6),
+  /** BE-070/071 — risk-gate rule limits (defaults = system design §10). */
+  RISK_MAX_CONCURRENT_TRADES: z.coerce.number().int().positive().default(5),
+  RISK_MAX_PER_CLUSTER: z.coerce.number().int().positive().default(2),
+  /** Comma-separated instruments exempt from the cluster cap (audited override). */
+  RISK_CLUSTER_EXEMPTIONS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  RISK_DAILY_DD_HALT_PCT: z.coerce.number().gt(0).lt(1).default(0.05),
+  RISK_WEEKLY_DD_HALT_PCT: z.coerce.number().gt(0).lt(1).default(0.1),
+  RISK_INSTRUMENT_DAILY_LOSS_PCT: z.coerce.number().gt(0).lt(1).default(0.02),
+  RISK_MIN_RR: z.coerce.number().positive().default(1.8),
+  RISK_WEEKEND_FLATTEN_ENABLED: z
+    .preprocess((v) => (v === '' ? undefined : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
+  RISK_ROLLOVER_AUTOFLATTEN_XAU: z
+    .preprocess((v) => (v === '' ? undefined : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
   /** BE-066 — paper-mode equity baseline until broker account sync exists. */
   ACCOUNT_BASELINE_EQUITY: z.coerce.number().positive().default(10_000),
   /** BE-066 — max concurrent LangGraph runs (§9.6 cap: 3). */

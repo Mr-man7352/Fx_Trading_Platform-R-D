@@ -27,6 +27,8 @@ export * from './api.js';
 export * from './audit.js';
 export * from './auth.js';
 export * from './broker.js';
+// BE-072/073 — kill-switch API contracts (Node-internal, like agents.js).
+export * from './killswitch.js';
 export * from './market.js';
 export * from './trading.js';
 export * from './ws.js';

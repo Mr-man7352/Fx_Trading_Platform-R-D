@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "typeRoots": ["../types/node_modules/@types"],
+    "types": ["node"],
+    "paths": {
+      "@fx/types": ["../types/src/index.ts"],
+      "zod": ["../types/node_modules/zod"],
+      "vitest": ["../types/node_modules/vitest/dist/index.d.ts"]
+    }
+  },
+  "include": ["src", "../types/src"]
+}

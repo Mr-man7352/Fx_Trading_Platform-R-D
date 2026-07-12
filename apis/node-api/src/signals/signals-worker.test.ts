@@ -226,6 +226,7 @@ function makeDeps(options: {
     assembler,
     graph,
     riskGate: options.riskGate ?? approveGate,
+    killSwitch: null, // BE-073 store exercised in kill-switch.test.ts
     account: {
       current: async () => ({ equity: 10_000, openPositions: 0, dailyPnlPct: 0, openRiskPct: 0 }),
     },

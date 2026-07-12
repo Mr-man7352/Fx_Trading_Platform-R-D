@@ -8,6 +8,7 @@ import { Redis } from 'ioredis';
 import { createPrismaClient } from '../db.js';
 import { loadEnv } from '../env.js';
 import { touchExecutionHeartbeat } from '../execution/halt.js';
+import { type KillSwitchDb, KillSwitchStore } from '../execution/kill-switch.js';
 import { QuantExecutionClient } from '../execution/quant-client.js';
 import { processExecutionJob } from './execution.js';
 import { processNotificationJob } from './notifications.js';
@@ -49,8 +50,14 @@ const executionDeps = {
   quant,
   supervisionQueue,
   notificationsQueue,
+  // BE-073 — re-hydrates kill-switch state from Postgres on cache miss.
+  killSwitch: new KillSwitchStore(prisma as unknown as KillSwitchDb, connection),
   env,
 };
+// BE-073 — re-hydrate on BOOT (story AC) as well as on every cache miss.
+executionDeps.killSwitch.hydrate().catch((err) => {
+  console.warn('[exec] kill-switch boot hydration failed (will retry on cache miss):', err);
+});
 
 const reconcilerDeps = {
   ...executionDeps,

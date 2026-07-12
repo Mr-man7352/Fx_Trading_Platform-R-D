@@ -4,6 +4,7 @@ import type { Redis } from 'ioredis';
 import type { PrismaClient } from '../db.js';
 import type { Env } from '../env.js';
 import { isExecutionHalted } from '../execution/halt.js';
+import type { KillSwitchStore } from '../execution/kill-switch.js';
 import type { ExecutionJob, NotificationJob, SignalJob } from '../workers/queues.js';
 import { writeWorkerAudit } from '../workers/worker-audit.js';
 import { publishWsEvent } from '../workers/ws-publish.js';
@@ -103,6 +104,12 @@ export interface SignalsWorkerDeps {
   assembler: ContextAssembler;
   graph: AgentGraph;
   riskGate: RiskGate;
+  /**
+   * BE-073 — Postgres-hydrated kill-switch state (null only in legacy tests).
+   * The Redis `execution:halt` check alone is NOT enough: a Redis flush must
+   * re-hydrate from Postgres, never silently resume trading.
+   */
+  killSwitch: KillSwitchStore | null;
   account: AccountStateProvider;
   /** null ⇒ memory disabled (ablation) — reflections are not written. */
   memory: AgentMemoryStore | null;
@@ -206,8 +213,10 @@ export async function processSignalJob(
   const barTs = new Date(job.barTs);
   const cycleId = `${instrument}-${timeframe}-${barTs.getTime()}`;
 
-  // Kill-switch/halt: no LLM spend while flat-and-halted.
-  if (await isExecutionHalted(deps.redis)) {
+  // Kill-switch/halt: no LLM spend while flat-and-halted. Checks BOTH the
+  // sticky Redis halt flag AND the Postgres-backed kill-switch (BE-073 —
+  // survives a Redis flush via re-hydration on cache miss).
+  if ((await isExecutionHalted(deps.redis)) || (await deps.killSwitch?.isActive()) === true) {
     await audit(deps, 'signal_cycle_skipped_halt', cycleId);
     return { outcome: 'hold', reason: 'halted' };
   }
@@ -340,7 +349,22 @@ export async function processSignalJob(
       account,
       degradedInstruments: degraded,
       barTs,
+      sessionLabel: result.sessionLabel,
+      liquidityRegime: result.liquidityRegime,
+      features: result.features,
     });
+    // BE-070 — gate-raised operator alerts (flash spread ⇒ critical) fan out
+    // regardless of verdict; the gate itself stays pure.
+    for (const alert of verdict.alerts ?? []) {
+      await deps.notificationsQueue.add(
+        'alert',
+        { severity: alert.severity, title: alert.title, body: alert.body, event: 'risk.alert' },
+        { removeOnComplete: 100 },
+      );
+    }
+    if ((verdict.flags ?? []).length > 0) {
+      await audit(deps, 'signal_cycle_risk_flags', signal.id, { flags: verdict.flags });
+    }
     if (verdict.verdict === 'veto') {
       await deps.prisma.signal.update({ where: { id: signal.id }, data: { status: 'rejected' } });
       await audit(deps, 'signal_cycle_risk_gate_veto', signal.id, {
