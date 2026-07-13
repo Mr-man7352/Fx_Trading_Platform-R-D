@@ -12,6 +12,8 @@ function testEnv(overrides: Record<string, string> = {}) {
     NODE_ENV: 'test',
     TRADING_MODE: 'paper',
     INTERNAL_API_TOKEN: TOKEN,
+    NEXTAUTH_SECRET: 'test-nextauth-secret-16ch',
+    INTERNAL_SYNC_TOKEN: 'test-internal-sync-token-16ch',
     LOG_LEVEL: 'fatal',
     CORS_ALLOWED_ORIGINS: 'http://localhost:3000',
     DATABASE_URL: 'postgresql://fx:fx@localhost:5432/fx',

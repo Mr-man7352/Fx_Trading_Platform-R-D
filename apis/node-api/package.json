@@ -51,6 +51,7 @@
     "@grpc/proto-loader": "^0.7.13",
     "@langchain/core": "^1.2.2",
     "@langchain/langgraph": "^1.4.7",
+    "@node-rs/argon2": "^2.0.2",
     "@opentelemetry/auto-instrumentations-node": "^0.56.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
     "@opentelemetry/resources": "^1.30.0",
@@ -64,7 +65,10 @@
     "fastify": "^5.9.0",
     "fastify-type-provider-zod": "^7.0.0",
     "ioredis": "^5.4.1",
+    "jose": "^6.2.3",
+    "otpauth": "^9.4.0",
     "pg": "^8.16.0",
+    "resend": "^6.1.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

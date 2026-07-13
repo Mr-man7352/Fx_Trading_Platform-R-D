@@ -19,11 +19,40 @@ const EnvSchema = z.object({
     .default('dev')
     .transform((v) => v || 'dev'),
   /**
-   * BE-013 — Phase 1 auth stand-in: every non-public route requires this token
-   * in the `x-internal-token` header (WS also accepts `?token=`). Replaced
-   * transparently by NextAuth JWT middleware (BE-030) in Phase 5.
+   * BE-013 — internal service token. From Phase 5 this authenticates
+   * server-to-server callers only (workers, dead-man's switch) via the
+   * `x-internal-token` header — user requests use NextAuth JWTs (BE-030).
    */
   INTERNAL_API_TOKEN: z.string().min(16, 'Use at least 16 characters'),
+  /**
+   * BE-030 — HS256 secret shared with the dashboard's NextAuth config; the API
+   * verifies session JWTs with it (`jose`). Same value on both sides or every
+   * request 401s. Generate with `openssl rand -base64 32`.
+   */
+  NEXTAUTH_SECRET: z.string().min(16, 'Use at least 16 characters'),
+  /**
+   * BE-031 — server-to-server token gating `POST /auth/sign-in-sync` (the
+   * dashboard's NextAuth Google callback calls it before a user JWT exists).
+   */
+  INTERNAL_SYNC_TOKEN: z.string().min(16, 'Use at least 16 characters'),
+  /** BE-034 — origin used to build verification/reset links in emails. */
+  APP_BASE_URL: z.string().url().default('http://localhost:3000'),
+  /** BE-034 — Resend API key; unset ⇒ emails are logged, not sent (mock-first). */
+  RESEND_API_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  /** BE-034 — transactional From address. */
+  EMAIL_FROM: z.string().default('FX Platform <onboarding@fx.local>'),
+  /** BE-034 — verify/reset token lifetime (minutes). */
+  AUTH_TOKEN_TTL_MIN: z.coerce.number().int().positive().default(60),
+  /** BE-033 — failed-login attempts per email+IP before a 429 (5-min window). */
+  AUTH_LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  /** BE-036 — TOTP issuer label shown in authenticator apps. */
+  TOTP_ISSUER: z.string().default('FX Platform'),
+  /** BE-036 — step-up freshness window (ms); mirrors STEP_UP_MAX_AGE_MS (15 min). */
+  STEP_UP_2FA_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60 * 1000),
   /** BE-011 — comma-separated CORS allowlist. */
   CORS_ALLOWED_ORIGINS: z
     .string()

@@ -5,6 +5,8 @@ import { loadEnv } from './env.js';
 const base = {
   TRADING_MODE: 'paper',
   INTERNAL_API_TOKEN: 'test-internal-token-16ch',
+  NEXTAUTH_SECRET: 'test-nextauth-secret-16ch',
+  INTERNAL_SYNC_TOKEN: 'test-internal-sync-token-16ch',
   DATABASE_URL: 'postgresql://fx:fx@localhost:5432/fx',
   // base64 of 32 bytes — test-only value.
   CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),

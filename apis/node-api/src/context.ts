@@ -1,17 +1,27 @@
 import { timingSafeEqual } from 'node:crypto';
+import type { UserRole } from '@fx/types';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AUDITED_METHODS } from './audit.js';
+import { verifyAccessToken } from './auth/jwt.js';
 import type { Env } from './env.js';
 
 /**
- * BE-013 — typed request context on every handler.
- * Phase 1 authenticates with an internal service token (`x-internal-token`);
- * NextAuth JWT middleware (BE-030, Phase 5) replaces the check transparently
- * behind this same `RequestContext` shape.
+ * BE-013/BE-030 — typed request context on every handler.
+ *
+ * Two authentication paths, one shape:
+ *   - `x-internal-token` — server-to-server callers (workers, dead-man's
+ *     switch) → role `internal`. Kept from Phase 1; no longer a user stand-in.
+ *   - `Authorization: Bearer <jwt>` — user requests. The HS256 token is minted
+ *     by the dashboard's NextAuth config (signed with `NEXTAUTH_SECRET`) and
+ *     verified here (BE-030). Claims populate `user`, `role`, `stepUp2FAAt`.
+ *
+ * Downstream handlers written in Phases 1–4 read `req.context` unchanged.
  */
+export type ContextRole = 'internal' | 'anonymous' | UserRole;
+
 export interface RequestContext {
   user: { id: string; email: string } | null;
-  role: 'internal' | 'anonymous';
+  role: ContextRole;
   stepUp2FAAt: string | null;
   requestId: string;
 }
@@ -37,25 +47,83 @@ export function isInternalTokenValid(env: Env, presented: unknown): boolean {
   return typeof presented === 'string' && safeEqual(presented, env.INTERNAL_API_TOKEN);
 }
 
+function bearer(req: FastifyRequest): string | null {
+  const header = req.headers.authorization;
+  if (!header) return null;
+  const [scheme, token] = header.split(' ');
+  return scheme?.toLowerCase() === 'bearer' && token ? token : null;
+}
+
+function isPublicRoute(env: Env, req: FastifyRequest): boolean {
+  return (
+    req.routeOptions?.config?.public === true ||
+    // Swagger UI (BE-015) registers its own routes; only mounted in non-prod.
+    (env.NODE_ENV !== 'production' && req.url.startsWith('/docs'))
+  );
+}
+
 export function registerContext(app: FastifyInstance, env: Env): void {
   app.decorateRequest('context');
+  const key = new TextEncoder().encode(env.NEXTAUTH_SECRET);
 
   app.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
-    const authenticated = isInternalTokenValid(env, req.headers['x-internal-token']);
+    const isPublic = isPublicRoute(env, req);
 
-    req.context = {
-      user: authenticated ? { id: 'internal', email: 'internal@system' } : null,
-      role: authenticated ? 'internal' : 'anonymous',
-      stepUp2FAAt: null,
-      requestId: req.id,
-    };
+    // Anonymous baseline; upgraded below on a valid credential.
+    req.context = { user: null, role: 'anonymous', stepUp2FAAt: null, requestId: req.id };
 
-    const isPublic =
-      req.routeOptions?.config?.public === true ||
-      // Swagger UI (BE-015) registers its own routes; only mounted in non-prod.
-      (env.NODE_ENV !== 'production' && req.url.startsWith('/docs'));
+    // 1 — server-to-server internal token wins (workers never carry a JWT).
+    if (isInternalTokenValid(env, req.headers['x-internal-token'])) {
+      req.context = {
+        user: { id: 'internal', email: 'internal@system' },
+        role: 'internal',
+        stepUp2FAAt: null,
+        requestId: req.id,
+      };
+      return;
+    }
 
-    if (!isPublic && !authenticated) {
+    // 2 — user JWT (BE-030).
+    const token = bearer(req);
+    if (token) {
+      const result = await verifyAccessToken(token, key);
+      if (!result.ok) {
+        // A bad token on a public route just stays anonymous; elsewhere it's 401.
+        if (isPublic) return;
+        return reply.code(401).send({
+          error: {
+            code: 'INVALID_TOKEN',
+            message: result.reason === 'expired' ? 'Token expired' : 'Invalid token',
+            requestId: req.id,
+          },
+        });
+      }
+
+      const { claims } = result;
+      // Suspended users are blocked even with a valid token (BE-030 AC).
+      if (app.prisma) {
+        const row = await app.prisma.user.findUnique({
+          where: { id: claims.sub },
+          select: { status: true },
+        });
+        if (row?.status === 'suspended') {
+          return reply.code(403).send({
+            error: { code: 'SUSPENDED', message: 'Account suspended', requestId: req.id },
+          });
+        }
+      }
+
+      req.context = {
+        user: { id: claims.sub, email: claims.email },
+        role: claims.role,
+        stepUp2FAAt: claims.stepUp2FAAt,
+        requestId: req.id,
+      };
+      return;
+    }
+
+    // 3 — no credential.
+    if (!isPublic) {
       return reply.code(401).send({
         error: { code: 'UNAUTHORIZED', message: 'Missing or invalid token', requestId: req.id },
       });

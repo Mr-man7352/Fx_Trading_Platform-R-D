@@ -7,6 +7,7 @@
 import { type ConnectionOptions, Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { buildApp } from './app.js';
+import { AuthService } from './auth/service.js';
 import { createPrismaClient } from './db.js';
 import { loadEnv } from './env.js';
 import { type KillSwitchDb, KillSwitchStore } from './execution/kill-switch.js';
@@ -37,6 +38,15 @@ const notificationsQueue = new Queue<NotificationJob>(NOTIFICATIONS_QUEUE, {
 const backtestsQueue = new Queue<BacktestJob>(BACKTESTS_QUEUE, {
   connection: cmdRedis as unknown as ConnectionOptions,
 });
+// BE-036 — real step-up verifier: the kill-switch checks a supplied TOTP /
+// recovery code against the acting user (consuming a recovery code on use).
+// The verifier path never sends email, so a console logger for the AuthService
+// email fallback is sufficient here (the route layer builds its own from app.log).
+const authService = new AuthService({
+  prisma,
+  env,
+  log: { info: (o, m) => console.log(m ?? '', o), error: (o, m) => console.error(m ?? '', o) },
+});
 const app = await buildApp(env, {
   prisma,
   killSwitch: {
@@ -49,6 +59,9 @@ const app = await buildApp(env, {
         { severity, title, body, event: 'kill_switch' },
         { removeOnComplete: 100 },
       );
+    },
+    verifier: {
+      verify: (userId, code) => authService.verifyTwoFactor(userId, code).then((r) => r.ok),
     },
   },
   backtests: { queue: backtestsQueue },

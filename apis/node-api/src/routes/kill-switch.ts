@@ -32,15 +32,16 @@ import { publishWsEvent } from '../workers/ws-publish.js';
  *   5. WS + notification fan-out.
  *
  * Step-up 2FA: the request shape carries `twoFactorCode` (matches the FE-011
- * `<KillSwitchButton>` contract). Verification activates when BE-036 lands
- * (Phase 5) via the `TwoFactorVerifier` seam; until then codes are recorded
- * in the audit trail but not enforced (Phase-3 internal-token stand-in —
- * see the BE-013 note). ACTIVATION is deliberately never blocked on 2FA
- * infrastructure being down: stopping trading is the fail-safe direction.
+ * `<KillSwitchButton>` contract). As of Step 5.1 (BE-036) a supplied code is
+ * verified against the acting user's TOTP / recovery codes via the wired
+ * `TwoFactorVerifier`. A WRONG code blocks; NO code does not — ACTIVATION is
+ * deliberately never blocked on 2FA infrastructure being down, because
+ * stopping trading is the fail-safe direction.
  */
 
 export interface TwoFactorVerifier {
-  verify(code: string): Promise<boolean>;
+  /** BE-036 — verify a TOTP or recovery code for the acting user. */
+  verify(userId: string, code: string): Promise<boolean>;
 }
 
 export interface KillSwitchRouteDeps {
@@ -106,17 +107,19 @@ export function registerKillSwitchRoutes(
       const { action, reason, twoFactorCode } = req.body;
       const actor = req.context.user?.id ?? 'unknown';
 
-      // BE-036 seam — verify when a real verifier exists; otherwise record.
-      let twoFactorNote = 'not required (Phase-3 stand-in)';
+      // BE-036 — a supplied code is verified against the acting user's TOTP /
+      // recovery codes. A WRONG code blocks; NO code does not (stopping trading
+      // is the fail-safe direction and must never be blocked on 2FA infra).
+      let twoFactorNote = 'not supplied';
       if (twoFactorCode && deps.verifier) {
-        if (!(await deps.verifier.verify(twoFactorCode))) {
+        if (!(await deps.verifier.verify(actor, twoFactorCode))) {
           return reply.code(400).send({
             error: { code: 'TWO_FACTOR_INVALID', message: 'Invalid 2FA code', requestId: req.id },
           });
         }
         twoFactorNote = 'verified';
       } else if (twoFactorCode) {
-        twoFactorNote = 'recorded, verifier not wired (BE-036, Phase 5)';
+        twoFactorNote = 'recorded, verifier not wired';
       }
 
       if (action === 'deactivate') {

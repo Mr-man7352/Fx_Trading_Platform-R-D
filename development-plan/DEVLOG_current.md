@@ -19,11 +19,22 @@ observe debate → kill-switch) from the dashboard, with alerts firing.
 
 ## Current state (updated 2026-07-12)
 
-- **Phase 5 (Surface) is NOT STARTED.** This log is the fresh Phase-5 record;
-  the first step entry will be appended below when work begins. Scope +
-  suggested build order are in the next section (PRD §9). Nothing in
-  `apps/dashboard` beyond the Phase-1 scaffold and no auth backend beyond the
-  internal-token stand-in has been written yet.
+- **Phase 5 Step 5.1 (Auth backend + 2FA) is CODE-COMPLETE, runtime-UNPROVEN,
+  uncommitted, and NOT installed/migrated.** BE-030…037 + FE-030…036 all shipped
+  in source (see the Step-5.1 entry below). It needs three operator-run steps
+  before anything works: (1) `pnpm install` (new deps: `@node-rs/argon2`,
+  `otpauth`, `jose`, `resend` in node-api; `jose` in the dashboard); (2)
+  `pnpm --filter @fx/types build` (new auth contracts) then, in `apis/node-api`,
+  `npx prisma migrate dev --name step_5_1_auth` (**new migration IS pending** —
+  `RecoveryCode`, `InviteRedemption`, `User.twoFactorEnabledAt`,
+  `InviteCode.revokedAt`; ask the operator to run it — generated, never
+  hand-written); (3) `pnpm --filter @fx/node-api test` + dashboard `build`.
+  New required env keys (`NEXTAUTH_SECRET`, `INTERNAL_SYNC_TOKEN`) are already
+  in `.env` / `.env.example` with dev values — **the API and every worker now
+  refuse to boot without them.**
+- **Rest of Phase 5 (Steps 5.2–5.4) NOT STARTED.** Scope + suggested build order
+  are in the next section (PRD §9). Beyond the Step-5.1 auth pages + a minimal
+  header UserMenu, `apps/dashboard` is still the Phase-1 scaffold.
 - **Phase 4 (Lifecycle) is CODE-COMPLETE but runtime-UNPROVEN and uncommitted.**
   Supervision (BE-080/081), the vectorbt quant engine + validation/ablation
   (QN-050…054), calibration/regime endpoints (QN-055), the event-driven agentic
@@ -246,6 +257,86 @@ promotion is attempted.
 ## Entries
 
 <!-- Append Phase 5 step entries below, newest first. -->
+
+### 2026-07-12 — Step 5.1: Auth backend + 2FA (BE-030…037, FE-030…036)
+
+**Contracts (`packages/types/src/auth.ts`)** — added `UserRoleSchema`,
+`PasswordSchema` (≥12, letter+digit), `AUTH_ERROR` codes, `ApiTokenClaims`
+(the HS256 Bearer shape), and request/response schemas for sign-in-sync,
+register, login, verify, reset, invite CRUD, TOTP enroll/verify/step-up/status,
+account + change-password. **Deliberately did NOT add `role` to `FXSessionSchema`
+(it's in `contractSchemas` → would churn the QN-003 Python drift check);** role
+travels via `ApiTokenClaims` (not registered) + the NextAuth session
+augmentation instead. `@fx/types` typechecks clean.
+
+**Schema (`apis/node-api/prisma/schema.prisma`)** — `User.twoFactorEnabledAt`;
+new `RecoveryCode` (argon2-hashed, single-use) and `InviteRedemption` (per-use
+audit) models; `InviteCode.revokedAt`. **A migration is pending — operator must
+run `npx prisma migrate dev --name step_5_1_auth`** (generated, not
+hand-written, per CLAUDE.md). The Phase-1 `users`/`invite_codes`/
+`email_verification_tokens` tables already existed; this fills the 2FA/linking
+gaps.
+
+**BE-030 (`src/context.ts` + `src/auth/jwt.ts`)** — replaced the internal-token
+stand-in *behind the same `RequestContext`*: `Authorization: Bearer <jwt>` is
+verified with `jose` HS256 against `NEXTAUTH_SECRET`; claims populate
+`user/role/stepUp2FAAt`; suspended users 403 even with a valid token; the
+`x-internal-token` path stays for server-to-server callers (workers,
+dead-man's switch). Downstream Phase 1–4 handlers unchanged. Covered by
+`src/context.test.ts` (valid/invalid/expired/internal/anonymous via `app.inject`).
+
+**BE-031…037 (`src/auth/*`, `src/routes/auth.ts`)** — `AuthService` owns all DB
+access; routes are a thin schema-validated shell. Endpoints: `POST
+/auth/sign-in-sync` (server-to-server via `x-internal-sync-token`, upserts +
+links Google↔credentials, invite-gates first-time Google users), `/auth/register`
+(invite-gated, argon2, verification email), `/auth/login` (NextAuth authorize
+target, in-memory failed-login limiter), `/auth/verify` + `/auth/request-
+password-reset` + `/auth/reset-password` (SHA-256-hashed single-use tokens,
+Resend or console mock), `/admin/invites` CRUD (`requireRole('admin')`),
+`/auth/2fa/{enroll,enroll/verify,verify,status}` (TOTP via `otpauth`, secret
+sealed with the credentials key under `fx-totp-secret:v1` AAD, 10 single-use
+recovery codes shown once), `/auth/account` + `/auth/account/change-password`
+(`requireStepUp` — 15-min TOTP window). Pure-logic unit tests for seal, tokens,
+invites, guards, jwt, totp, recovery-codes.
+
+**BE-036 kill-switch wiring** — the `twoFactorCode` seam is now real: a wired
+`TwoFactorVerifier` (via `AuthService.verifyTwoFactor`, consuming recovery codes)
+verifies a supplied code against the acting user. A wrong code blocks; no code
+does not (activation is never blocked on 2FA infra — fail-safe direction).
+`server.ts` constructs and passes the verifier.
+
+**BE-014** — the `/ws` gateway now also accepts a user JWT via `?token=` and
+closes the socket with a `TOKEN_EXPIRED` re-auth hint at the token's `exp`.
+
+**FE-030…036 (`apps/dashboard`)** — NextAuth v5 config (`src/auth.ts`: Google +
+Credentials, JWT strategy, sign-in-sync in the signIn callback, `stepUp2FAAt`
+refreshed via `session.update()`), `[...nextauth]` + `/api/token` (mints the
+short-lived API Bearer server-side) route handlers, `middleware.ts` gating
+`/dashboard`+`/settings`, `SessionProvider`. Pages: sign-in (Google + email/pw),
+register (invite), forgot-/reset-password, verify + verify-pending, account
+settings (profile, Google-link, 2FA enroll + recovery codes, step-up modal,
+change/set password). A header `UserMenu` (account link + sign-out) makes the
+surface reachable end-to-end.
+
+**Env** — `NEXTAUTH_SECRET` + `INTERNAL_SYNC_TOKEN` are now **required** (min 16;
+API + workers won't boot without them); added `APP_BASE_URL`, `RESEND_API_KEY`
+(optional → console mock), `EMAIL_FROM`, `AUTH_TOKEN_TTL_MIN`,
+`AUTH_LOGIN_MAX_ATTEMPTS`, `TOTP_ISSUER`, `STEP_UP_2FA_TTL_MS`. All in `env.ts`,
+`.env`, `.env.example`; the four in-repo test env builders updated so existing
+suites still parse.
+
+- Decisions: HS256 signed JWT (per BE-030 note) rather than NextAuth's default
+  JWE, so the API verifies with plain `jose.jwtVerify`; the dashboard mints the
+  Bearer from the session at `/api/token`. Password change requires 2FA enrolled
+  (step-up can't otherwise be satisfied) — surfaced in the UI.
+- Verified: `@fx/types` `tsc --noEmit` clean (twice). **NOT verified in-sandbox:**
+  `vitest` (missing native `rolldown` arm64 binding) and `biome` (missing arm64
+  binary) can't run here, and node-api `tsc` needs the new deps + regenerated
+  Prisma client + `@fx/types` dist first. Operator gate: `pnpm install` →
+  `pnpm --filter @fx/types build` → `npx prisma generate && npx prisma migrate
+  dev --name step_5_1_auth` (in `apis/node-api`) → `pnpm build && pnpm test &&
+  pnpm lint` (run `biome check --write` for import-sort/format) → dashboard
+  `pnpm --filter @fx/dashboard build`.
 
 ---
 

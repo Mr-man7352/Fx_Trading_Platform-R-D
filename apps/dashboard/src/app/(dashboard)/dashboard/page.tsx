@@ -11,6 +11,7 @@ import {
   ModeBadge,
   PnLTile,
 } from '@fx/ui';
+import { UserMenu } from '@/components/user-menu';
 import { KillSwitch } from './kill-switch';
 
 /**
@@ -31,6 +32,7 @@ export default function DashboardPage() {
           <div className="hidden md:block">
             <KillSwitch />
           </div>
+          <UserMenu />
         </>
       }
       banner={<DisclaimerBanner />}

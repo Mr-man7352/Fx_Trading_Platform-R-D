@@ -20,6 +20,7 @@ import type { PrismaClient } from './db.js';
 import type { Env } from './env.js';
 import { EventBus } from './events.js';
 import { registerAuditRoutes } from './routes/audit.js';
+import { registerAuthRoutes } from './routes/auth.js';
 import { type BacktestRouteDeps, registerBacktestRoutes } from './routes/backtests.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { type KillSwitchRouteDeps, registerKillSwitchRoutes } from './routes/kill-switch.js';
@@ -103,10 +104,13 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
       },
       components: {
         securitySchemes: {
+          // BE-030 — user requests: NextAuth-minted HS256 Bearer JWT.
+          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+          // BE-013 — server-to-server callers (workers, dead-man's switch).
           internalToken: { type: 'apiKey', in: 'header', name: 'x-internal-token' },
         },
       },
-      security: [{ internalToken: [] }],
+      security: [{ bearerAuth: [] }, { internalToken: [] }],
     },
     transform: jsonSchemaTransform,
   });
@@ -188,6 +192,7 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
   registerMetricsRoutes(app); // BE-141 — Prometheus scrape target
   registerWsRoutes(app, env);
   registerAuditRoutes(app); // BE-130 — GET /audit (503 without a DB client)
+  registerAuthRoutes(app, env); // BE-030…037 — /auth/* + /admin/invites (skipped without a DB)
   registerMarketRoutes(app); // BE-042/BE-045 — /market/{instruments,candles,news}
   registerSignalsRoutes(app); // BE-067 — GET /signals (agent-cycle summaries)
   registerKillSwitchRoutes(app, opts.killSwitch ?? null); // BE-072/073 — /settings/kill-switch

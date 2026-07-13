@@ -1,32 +1,66 @@
 import { WsClientMessageSchema, type WsServerMessage } from '@fx/types';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
+import { makeSecretKey, verifyAccessToken } from '../auth/jwt.js';
 import { isInternalTokenValid } from '../context.js';
 import type { Env } from '../env.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 /**
- * BE-014 — WebSocket gateway at `/ws` (Phase-1 internal-token variant).
- * Auth: `x-internal-token` header or `?token=` query param (browsers cannot
- * set WS headers). JWT auth + expiry-driven close (re-auth hint) arrive with
- * BE-030 in Phase 5 behind the same message contract (`@fx/types` Ws*).
+ * BE-014 — WebSocket gateway at `/ws`.
+ * Auth: `x-internal-token` header (server-to-server) OR a NextAuth Bearer JWT
+ * passed as `?token=` (browsers cannot set WS headers). A JWT connection is
+ * closed with a re-auth hint the moment its `exp` passes (BE-030), so a stale
+ * session can't keep streaming.
  */
 export function registerWsRoutes(app: FastifyInstance, env: Env): void {
+  const jwtKey = makeSecretKey(env.NEXTAUTH_SECRET);
   app.get(
     '/ws',
     { websocket: true, config: { public: true }, schema: { hide: true } },
-    (socket: WebSocket, req: FastifyRequest) => {
+    async (socket: WebSocket, req: FastifyRequest) => {
       const send = (msg: WsServerMessage) => {
         if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(msg));
       };
 
       const { token } = req.query as { token?: string };
       const presented = req.headers['x-internal-token'] ?? token;
+      let expiryTimer: NodeJS.Timeout | undefined;
+
       if (!isInternalTokenValid(env, presented)) {
-        send({ type: 'error', code: 'UNAUTHORIZED', message: 'Missing or invalid token' });
-        socket.close(1008, 'unauthorized');
-        return;
+        // Not the internal token — try a user JWT from the query param.
+        const result =
+          typeof token === 'string'
+            ? await verifyAccessToken(token, jwtKey)
+            : ({ ok: false } as const);
+        if (!result.ok) {
+          send({ type: 'error', code: 'UNAUTHORIZED', message: 'Missing or invalid token' });
+          socket.close(1008, 'unauthorized');
+          return;
+        }
+        // Close with a re-auth hint when the token expires mid-session.
+        if (result.exp) {
+          const ms = result.exp * 1000 - Date.now();
+          if (ms <= 0) {
+            send({
+              type: 'error',
+              code: 'TOKEN_EXPIRED',
+              message: 'Token expired — re-authenticate',
+            });
+            socket.close(1008, 'token-expired');
+            return;
+          }
+          expiryTimer = setTimeout(() => {
+            send({
+              type: 'error',
+              code: 'TOKEN_EXPIRED',
+              message: 'Token expired — re-authenticate',
+            });
+            socket.close(1008, 'token-expired');
+          }, ms);
+          expiryTimer.unref?.();
+        }
       }
 
       const subscriptions = new Map<string, () => void>();
@@ -90,6 +124,7 @@ export function registerWsRoutes(app: FastifyInstance, env: Env): void {
 
       socket.on('close', () => {
         clearInterval(heartbeat);
+        if (expiryTimer) clearTimeout(expiryTimer);
         for (const unsubscribe of subscriptions.values()) unsubscribe();
         subscriptions.clear();
       });

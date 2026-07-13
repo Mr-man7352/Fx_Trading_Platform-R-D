@@ -550,31 +550,39 @@ enum UserStatus {
   @@map("user_status")
 }
 
-/// Identity (Google OAuth sync + credentials). Auth flows land in Phase 5
-/// (BE-030…036); Phase 1 only needs the rows for FKs and seeds.
+/// Identity (Google OAuth sync + credentials). BE-030…037 auth flows populate
+/// the credential/2FA columns; Phase 1 only needed the rows for FKs and seeds.
+/// `totpSecret` holds the AES-256-GCM-sealed TOTP secret (same envelope as
+/// broker creds, AAD "fx-totp-secret:v1") — plaintext never hits the DB.
 model User {
-  id              String     @id @default(uuid()) @db.Uuid
-  email           String     @unique
-  name            String?
-  image           String?
-  googleId        String?    @unique @map("google_id")
-  passwordHash    String?    @map("password_hash")
-  role            UserRole   @default(operator)
-  status          UserStatus @default(active)
-  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(6)
-  totpSecret      String?    @map("totp_secret")
-  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                String     @id @default(uuid()) @db.Uuid
+  email             String     @unique
+  name              String?
+  image             String?
+  googleId          String?    @unique @map("google_id")
+  passwordHash      String?    @map("password_hash")
+  role              UserRole   @default(operator)
+  status            UserStatus @default(active)
+  emailVerifiedAt   DateTime?  @map("email_verified_at") @db.Timestamptz(6)
+  /// BE-036 — sealed TOTP secret; present once enrollment is verified.
+  totpSecret        String?    @map("totp_secret")
+  /// BE-036 — set when 2FA enrollment completes (secret alone can be pending).
+  twoFactorEnabledAt DateTime? @map("two_factor_enabled_at") @db.Timestamptz(6)
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   trades            Trade[]
   brokerCredentials BrokerCredential[]
   tokens            EmailVerificationToken[]
+  recoveryCodes     RecoveryCode[]
   invitesCreated    InviteCode[]             @relation("InviteCreatedBy")
+  invitesRedeemed   InviteRedemption[]
 
   @@map("users")
 }
 
-/// Invite-only registration (§4.2). Redemption tracking arrives with BE-035.
+/// Invite-only registration (§4.2). `revokedAt` lets an admin disable a code
+/// without deleting its audit trail; `redemptions` is the per-use log (BE-035).
 model InviteCode {
   id           String    @id @default(uuid()) @db.Uuid
   code         String    @unique
@@ -583,11 +591,43 @@ model InviteCode {
   maxUses      Int       @default(1) @map("max_uses")
   usedCount    Int       @default(0) @map("used_count")
   expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  createdBy User? @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?              @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  redemptions InviteRedemption[]
 
   @@map("invite_codes")
+}
+
+/// BE-035 — one row per successful invite redemption (usage stats + audit).
+model InviteRedemption {
+  id           String   @id @default(uuid()) @db.Uuid
+  inviteCodeId String   @map("invite_code_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  redeemedAt   DateTime @default(now()) @map("redeemed_at") @db.Timestamptz(6)
+
+  inviteCode InviteCode @relation(fields: [inviteCodeId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([inviteCodeId])
+  @@map("invite_redemptions")
+}
+
+/// BE-036 — 10 single-use recovery codes per enrollment. Only the argon2 hash
+/// is stored; a code is consumed (usedAt set) on first successful use. A fresh
+/// enrollment deletes the prior set (break-glass re-enroll path).
+model RecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
 }
 
 enum TokenPurpose {

@@ -15,6 +15,7 @@
     "@fx/auth-client": "workspace:*",
     "@fx/types": "workspace:*",
     "@fx/ui": "workspace:*",
+    "jose": "^6.2.3",
     "next": "16.2.9",
     "next-auth": "5.0.0-beta.31",
     "react": "^19.2.0",

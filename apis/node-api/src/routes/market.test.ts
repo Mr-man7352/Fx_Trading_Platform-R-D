@@ -12,6 +12,8 @@ function testEnv() {
     NODE_ENV: 'test',
     TRADING_MODE: 'paper',
     INTERNAL_API_TOKEN: TOKEN,
+    NEXTAUTH_SECRET: 'test-nextauth-secret-16ch',
+    INTERNAL_SYNC_TOKEN: 'test-internal-sync-token-16ch',
     LOG_LEVEL: 'fatal',
     DATABASE_URL: 'postgresql://fx:fx@localhost:5432/fx',
     CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
