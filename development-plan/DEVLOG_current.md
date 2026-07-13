@@ -17,7 +17,22 @@ observe debate → kill-switch) from the dashboard, with alerts firing.
 
 ---
 
-## Current state (updated 2026-07-12)
+## Current state (updated 2026-07-13)
+
+- **Phase 5 Step 5.2 (Dashboard) is CODE-COMPLETE, runtime-UNPROVEN,
+  uncommitted, and NOT installed.** All FE-041/040/042/050/060/070/080/090/100/
+  101/102 shipped in source on a new shared api-client/query/WS layer (see the
+  Step-5.2 entry below). Fully wired to real endpoints: `/audit` (BE-130),
+  `/backtests` (BE-090), `/signals` (BE-067), `/market/*` (BE-045),
+  `/settings/kill-switch` (BE-072/073). Remaining seams surfaced honestly (not
+  faked): broker-equity tiles, gRPC-breaker + session/liquidity health pills,
+  trades REST (BE-054), quant calibration proxy (QN-055), settings persistence
+  (BE-100), economic calendar (BE-110), per-signal agent-run provenance replay.
+  **Operator gate before it renders: `pnpm install` (new deps) → build
+  `@fx/types` + `@fx/api-client` → dashboard `typecheck`/`build` → `biome check
+  --write`.** No new migration, no new env keys. **Next: Step 5.3 (settings +
+  notifications backend) unblocks the FE-100/101 seams; Step 5.4 adds realtime
+  toasts polish + a11y + Playwright E2E (DoD).**
 
 - **Phase 5 Step 5.1 (Auth backend + 2FA) is CODE-COMPLETE, runtime-UNPROVEN,
   uncommitted, and NOT installed/migrated.** BE-030…037 + FE-030…036 all shipped
@@ -257,6 +272,89 @@ promotion is attempted.
 ## Entries
 
 <!-- Append Phase 5 step entries below, newest first. -->
+
+### 2026-07-13 — Step 5.2: Dashboard (FE-041, FE-040/042, FE-050, FE-060, FE-070, FE-080, FE-090, FE-100, FE-101, FE-102)
+
+Full operator surface built on a new shared data/realtime layer. **Uncommitted,
+runtime-UNPROVEN, and NOT installed** — new dashboard deps must be `pnpm
+install`ed first (see operator gate below).
+
+**Shared infra (new):**
+- `packages/api-client/src/index.ts` — extended the typed client (was
+  health+trades only) with `market.{instruments,candles,news}` (BE-045/042),
+  `signals.list` (BE-067), `backtests.{list,get,create}` (BE-090),
+  `audit.list` (BE-130), and `killSwitch.{get,set}` (BE-072/073). GET queries
+  take partials (server fills zod defaults); every response Zod-validated. Kept
+  the strict `verbatimModuleSyntax` split (type-only imports separated).
+- `apps/dashboard/src/lib/api.ts` — browser client factory: bearer minted at
+  `/api/token`, 401 → `/sign-in`, 403 `STEP_UP_2FA_REQUIRED` → step-up store.
+- `lib/hooks.ts` — TanStack Query hooks (signals, candles, instruments,
+  backtests, audit, kill-switch, trades) with cache keys + invalidation.
+- `lib/use-ws.ts` — WS subscription hook (`/ws?token=`), reconnect w/ backoff,
+  handles the `TOKEN_EXPIRED` close (BE-014). Flat `{type,channel}` client
+  frames (matches `WsClientMessageSchema`; the signals.ts doc-comment showing a
+  `data`-wrapped shape is stale).
+- `stores/step-up.ts` (zustand) + `components/step-up-gate.tsx` — global 403
+  step-up gate, mounted once in the dashboard layout.
+- `app/providers.tsx` — added `QueryClientProvider` + Sonner `<Toaster>`
+  (FE-120 toast sink).
+- `components/{kill-switch,states,page-header,app-nav}.tsx` — the kill-switch is
+  now API-wired (replaces the Phase-3 visible no-op): activate carries a reason
+  + step-up code when 2FA is enrolled; already-halted flips to a deactivate
+  affordance reading the PG source-of-truth state. `states.tsx` = FE-121
+  Empty/Error/Loading (a `DB_UNAVAILABLE`/`KILL_SWITCH_UNAVAILABLE` code renders
+  a calm "not available yet" seam notice).
+
+**Pages (all under a new `(dashboard)/layout.tsx` = FE-041 AppShell: sidebar nav
+with active highlight, ModeBadge, kill-switch, UserMenu, disclaimer, mobile
+sticky footer with the kill-switch one tap away, FE-130 groundwork):**
+- FE-040 `/dashboard` + FE-042 health strip — tiles + system-health pills
+  (kill-switch state + `model_downgraded` are real; gRPC breaker + session/
+  liquidity regime are labelled seams, not faked). Live WS bridge invalidates
+  queries + toasts on `signals`/`risk.*`.
+- FE-050 `/charts` — Lightweight Charts v5 candles (`/market/candles`),
+  EMA(20/50), instrument selector, H1/D1 toggle, past-signal markers.
+- FE-060 `/agents` — signals list + selected-cycle detail (quant candidate,
+  P, roles, cost, debate turns), live `signals` stream, explicit `gate_skip`
+  zero-cost card. Full per-role transcript + retrieved memories = the remaining
+  per-signal provenance seam (BE-067 exposes summaries only).
+- FE-070 `/trades` — expandable provenance rows + CSV export (BE-054 seam;
+  graceful empty/unavailable).
+- FE-080 `/backtest` — config form validated against `BacktestConfigSchema`,
+  run list, detail (OOS metrics picked from the free-form engine report,
+  validation verdict, reproducible/non-reproducible label), WS `backtests`
+  progress. **Fully wired to BE-090** (deferred in from Phase 4).
+- FE-090 `/quant` — recharts reliability diagram scaffold + champion/regime
+  panels; QN-055 reads need a Node proxy (seam) + a retrained champion.
+- FE-100 `/settings` — v2.2 risk knobs (clustering, session multipliers,
+  gap-flatten, per-instrument loss, debate-regime mapping, entry-gate
+  pre-filter) range-validated client-side; persistence = BE-100 seam; live
+  promotion gated (step-up + BE-101).
+- FE-101 `/calendar` — events + ±30 min blackout UX; BE-110 vendor seam.
+- FE-102 `/audit` — `GET /audit` with method/actor filters + pagination.
+  **Fully wired to BE-130.**
+- `middleware.ts` — gated-prefix list extended to every operator route (the
+  `(dashboard)` group resolves to top-level paths).
+
+**Deps added to `apps/dashboard/package.json`** (operator installs):
+`@tanstack/react-query`, `zustand`, `sonner`, `lightweight-charts`, `recharts`,
+`react-hook-form`, `@hookform/resolvers`.
+
+- Decisions: reused/extended `@fx/api-client` rather than a dashboard-local
+  fetcher, so 401/step-up handling + runtime Zod validation live in one place.
+  Kept `zod` out of the dashboard's own deps (settings uses plain range checks;
+  the authoritative settings schema lands in `@fx/types` with BE-100). Seam
+  pages render honest "awaiting feed / BE-xxx" states rather than fabricated
+  numbers, matching the repo's convention.
+- Verified: symbol-existence checked against `@fx/types` source; type/import
+  correctness reviewed by hand. **NOT verified in-sandbox:** `tsc`/`biome`/
+  `vitest` can't run here — the workspace bundler (tsup→rollup) and biome are
+  missing arm64 native bindings (same limitation Phase 4/Step 5.1 documented),
+  and the new dashboard deps aren't installed. **Operator gate:** `pnpm install`
+  → `pnpm --filter @fx/types build` → `pnpm --filter @fx/api-client build` →
+  `pnpm --filter @fx/dashboard typecheck && pnpm --filter @fx/dashboard build`
+  → `biome check --write` (import-sort/`useImportType`). No new migration or env
+  keys. E2E (Playwright) + a11y (axe) per the DoD still to add in Step 5.4.
 
 ### 2026-07-12 — Step 5.1: Auth backend + 2FA (BE-030…037, FE-030…036)
 
