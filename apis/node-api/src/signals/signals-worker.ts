@@ -135,6 +135,8 @@ export interface CycleOutcome {
     | 'pm_hold'
     | 'risk_gate_veto'
     | 'zero_units'
+    /** BE-121 — live canary: intent parked pending one-tap operator confirm. */
+    | 'canary_pending'
     | 'executed';
   reason?: HoldReason | string;
   signalId?: string;
@@ -417,13 +419,27 @@ export async function processSignalJob(
       return { outcome: 'zero_units', reason, signalId: signal.id };
     }
 
-    // 11 — TradeIntent + execution queue.
+    // 11 — BE-121 canary go-live: the first N LIVE trades are size-clamped
+    // to the ramp cap and parked as PENDING intents that require a one-tap
+    // operator confirm (POST /api/trades/intents/:id/confirm) — agent
+    // approval + risk-gate approval alone never execute during the ramp.
+    let units = sizing.sizing.units;
+    let canary = false;
+    if (deps.env.TRADING_MODE === 'live' && deps.env.CANARY_CONFIRM_FIRST_N > 0) {
+      const liveTrades = await deps.prisma.trade.count({ where: { tradingMode: 'live' } });
+      if (liveTrades < deps.env.CANARY_CONFIRM_FIRST_N) {
+        canary = true;
+        units = Math.min(units, deps.env.CANARY_MAX_UNITS);
+      }
+    }
+
+    // 12 — TradeIntent (+ execution queue, unless canary-parked).
     const intent = await deps.prisma.tradeIntent.create({
       data: {
         signalId: signal.id,
         instrument,
         side: candidate.side,
-        units: sizing.sizing.units,
+        units,
         entryPrice: candidate.entryPrice,
         stopLoss: candidate.stopLossPrice,
         takeProfit: candidate.takeProfitPrice,
@@ -437,12 +453,56 @@ export async function processSignalJob(
             capsApplied: sizing.sizing.capsApplied,
             probScale: sizing.sizing.probScale,
           },
+          ...(canary
+            ? {
+                canary: {
+                  confirmRequired: true,
+                  unitsRequested: sizing.sizing.units,
+                  unitsClamped: units,
+                  maxUnits: deps.env.CANARY_MAX_UNITS,
+                  firstN: deps.env.CANARY_CONFIRM_FIRST_N,
+                },
+              }
+            : {}),
         } as never,
-        status: 'approved',
+        status: canary ? 'pending' : 'approved',
         tradingMode: deps.env.TRADING_MODE,
       },
     });
     await deps.prisma.signal.update({ where: { id: signal.id }, data: { status: 'approved' } });
+
+    if (canary) {
+      await deps.notificationsQueue.add(
+        'alert',
+        {
+          severity: 'critical',
+          title: `Canary confirm required: ${instrument} ${candidate.side}`,
+          body:
+            `LIVE canary trade awaiting one-tap confirm: ${instrument} ${candidate.side} ` +
+            `${units} units (requested ${sizing.sizing.units}). Confirm within ` +
+            `${deps.env.CANARY_CONFIRM_TTL_MIN} min or it expires. Intent ${intent.id}.`,
+          event: 'canary.confirm_required',
+        },
+        { removeOnComplete: 100 },
+      );
+      await audit(deps, 'signal_cycle_canary_pending', signal.id, {
+        intentId: intent.id,
+        units,
+        unitsRequested: sizing.sizing.units,
+        e2eMs: Date.now() - e2eStart,
+        costUsd: graphResult.costUsd,
+      });
+      await emit(deps, 'signal:canary_confirm_required', {
+        signalId: signal.id,
+        intentId: intent.id,
+        instrument,
+        side: candidate.side,
+        units,
+        expiresInMin: deps.env.CANARY_CONFIRM_TTL_MIN,
+      });
+      return { outcome: 'canary_pending', signalId: signal.id };
+    }
+
     await deps.executionQueue.add(
       'execute-intent',
       { intentId: intent.id },
@@ -450,7 +510,7 @@ export async function processSignalJob(
     );
     await audit(deps, 'signal_cycle_executed', signal.id, {
       intentId: intent.id,
-      units: sizing.sizing.units,
+      units,
       e2eMs: Date.now() - e2eStart,
       costUsd: graphResult.costUsd,
     });
@@ -459,7 +519,7 @@ export async function processSignalJob(
       intentId: intent.id,
       instrument,
       side: candidate.side,
-      units: sizing.sizing.units,
+      units,
     });
     return { outcome: 'executed', signalId: signal.id };
   } finally {

@@ -22,9 +22,7 @@ class TestModelStore:
         store, meta, result = trained_artifacts
         loaded = store.load("EUR_USD", "H1", meta.version)
         features = dict.fromkeys(result.feature_names, 0.1)
-        original = predict_proba(
-            result.booster, result.calibrator, result.feature_names, features
-        )
+        original = predict_proba(result.booster, result.calibrator, result.feature_names, features)
         reloaded = predict_proba(
             loaded.booster, loaded.calibrator, loaded.meta.feature_names, features
         )
@@ -80,9 +78,7 @@ class TestChampionChallenger:
         await registry.register(meta)
         await registry.promote("EUR_USD", "H1", meta.version, force=True)
         # Register a second version (same artifacts re-saved → v2).
-        meta2 = store.save(
-            result, instrument="EUR_USD", timeframe="H1", feature_set_version=1
-        )
+        meta2 = store.save(result, instrument="EUR_USD", timeframe="H1", feature_set_version=1)
         await registry.register(meta2)
         challenger = await registry.newest_challenger("EUR_USD", "H1")
         assert challenger is not None and challenger.meta.version == meta2.version

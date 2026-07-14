@@ -3,7 +3,9 @@ threshold sweep, PIT report, deterministic replay."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -20,8 +22,14 @@ def make_candles(prices: list[tuple[float, float, float, float]], start: datetim
     rows = []
     for k, (o, h, lo, c) in enumerate(prices):
         rows.append(
-            {"ts": start + timedelta(hours=k), "open": o, "high": h, "low": lo, "close": c,
-             "volume": 100.0}
+            {
+                "ts": start + timedelta(hours=k),
+                "open": o,
+                "high": h,
+                "low": lo,
+                "close": c,
+                "volume": 100.0,
+            }
         )
     return pd.DataFrame(rows)
 
@@ -35,8 +43,8 @@ def make_features(candles: pd.DataFrame, atr: float = 0.0010, **cols):
     return f
 
 
-def params(**overrides):
-    defaults = dict(
+def params(**overrides: Any) -> BacktestParams:
+    base = BacktestParams(
         instrument="EUR_USD",
         timeframe="H1",
         probability_threshold=0.60,
@@ -45,8 +53,8 @@ def params(**overrides):
         risk_pct=0.01,
         initial_equity=10_000.0,
     )
-    defaults.update(overrides)
-    return BacktestParams(**defaults)
+    # dataclasses.replace keeps this strict-typed (no dict[str, object] splat).
+    return replace(base, **overrides) if overrides else base
 
 
 def build(candles, p):
@@ -103,9 +111,7 @@ def test_flash_crash_slippage_10x_documented():
     candles = make_candles([FLAT, (1.1000, 1.1001, 1.0985, 1.0990), FLAT, FLAT])
     spread_pctile = [0.5, 0.999, 0.5, 0.5]
     spread_pips = [1.0, 1.0, 1.0, 1.0]
-    features = make_features(
-        candles, spread_pctile=spread_pctile, spread_pips=spread_pips
-    )
+    features = make_features(candles, spread_pctile=spread_pctile, spread_pips=spread_pips)
     sides = pd.Series([1.0, 0.0, 0.0, 0.0])
     proba = np.array([0.9, np.nan, np.nan, np.nan])
     trades, _ = build(candles, params())._simulate(features, sides, proba, 0.6)
@@ -175,14 +181,10 @@ def test_full_run_report_shape_and_determinism():
     assert report["point_in_time"]["leakage"] is False
     assert "0.600" in report["threshold_sweep"]
     assert set(report["threshold_sweep"].keys()) >= {"0.550", "0.600", "0.700"}
-    assert report["optimal_threshold"]["threshold"] in [
-        float(k) for k in report["threshold_sweep"]
-    ]
+    assert report["optimal_threshold"]["threshold"] in [float(k) for k in report["threshold_sweep"]]
     m = report["metrics"]
     for key in ("n_trades", "hit_rate", "expectancy_r", "sharpe", "max_drawdown_pct", "costs"):
         assert key in m
     # Deterministic replay: same inputs ⇒ identical report (design §1).
-    report2 = BacktestEngine(
-        candles, params=p, proba_fn=lambda f, s: np.full(len(f), 0.65)
-    ).run()
+    report2 = BacktestEngine(candles, params=p, proba_fn=lambda f, s: np.full(len(f), 0.65)).run()
     assert report == report2

@@ -144,9 +144,7 @@ class OandaClient:
             "count": str(min(count, 5000)),
             "includeFirst": str(include_first).lower(),
         }
-        resp = await self._client.get(
-            f"/v3/instruments/{instrument}/candles", params=params
-        )
+        resp = await self._client.get(f"/v3/instruments/{instrument}/candles", params=params)
         if resp.status_code != 200:
             raise OandaError(f"candles {instrument} {granularity} failed: HTTP {resp.status_code}")
         out: list[Candle] = []

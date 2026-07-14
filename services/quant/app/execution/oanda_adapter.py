@@ -272,7 +272,7 @@ class OandaAdapter:
                     closed_at=closed_at,
                 )
             )
-        records.sort(key=lambda r: (r.closed_at or r.opened_at))
+        records.sort(key=lambda r: r.closed_at or r.opened_at)
         return records
 
     # ── internals ───────────────────────────────────────────────────────────
@@ -345,9 +345,7 @@ class OandaAdapter:
             commission=_num(tx.get("commission")) if tx.get("commission") is not None else None,
             client_order_id=client_id,
             trade_opened_id=str(trade_opened["tradeID"]) if trade_opened.get("tradeID") else None,
-            trades_closed=tuple(
-                self._trade_reduce(tc) for tc in (tx.get("tradesClosed") or [])
-            ),
+            trades_closed=tuple(self._trade_reduce(tc) for tc in (tx.get("tradesClosed") or [])),
             trade_reduced=(
                 self._trade_reduce(tx["tradeReduced"]) if tx.get("tradeReduced") else None
             ),

@@ -41,9 +41,7 @@ def test_run_pipeline_without_db_is_failed_precondition(
     monkeypatch.setenv("DATABASE_URL", "")  # a repo .env may set it — force off
     get_settings.cache_clear()
     stub = quant_pb2_grpc.QuantServiceStub(channel)
-    request = quant_pb2.RunPipelineRequest(
-        instrument="EUR_USD", timeframe=quant_pb2.TIMEFRAME_H1
-    )
+    request = quant_pb2.RunPipelineRequest(instrument="EUR_USD", timeframe=quant_pb2.TIMEFRAME_H1)
     with pytest.raises(grpc.RpcError) as excinfo:
         stub.RunPipeline(request, timeout=10)
     assert excinfo.value.code() == grpc.StatusCode.FAILED_PRECONDITION

@@ -123,9 +123,7 @@ def bootstrap_pvalue(
     if len(rs) == 0:
         return math.nan
     rng = np.random.default_rng(seed)
-    means = np.array(
-        [rng.choice(rs, size=len(rs), replace=True).mean() for _ in range(n_boot)]
-    )
+    means = np.array([rng.choice(rs, size=len(rs), replace=True).mean() for _ in range(n_boot)])
     return float((means <= 0.0).mean())
 
 
@@ -208,10 +206,10 @@ def validate_backtest(
         "blocks_live_promotion": verdict != VERDICT_VALIDATED,
         "reasons": reasons,
         "checks": {
-            "n_trades": int(len(rs)),
+            "n_trades": len(rs),
             "in_sample_expectancy_r": is_exp,
             "oos_expectancy_r": oos_exp,
-            "oos_trades": int(len(oos_rs)),
+            "oos_trades": len(oos_rs),
             "embargo_trades": c.embargo_trades,
             "trade_sharpe": trade_sharpe,
             "deflated_sharpe_prob": dsr,

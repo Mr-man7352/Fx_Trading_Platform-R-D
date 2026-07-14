@@ -95,11 +95,22 @@ async def cmd_train(instrument: str, timeframe: str) -> int:
         )
         registry = ModelRegistry(store, db)
         await registry.register(meta)
-        print(json.dumps({"registered": meta.to_json()["metrics"] | {
-            "instrument": instrument, "timeframe": timeframe,
-            "version": meta.version, "role": meta.role,
-            "artifact": meta.artifact_path,
-        }}, indent=2, default=str))
+        print(
+            json.dumps(
+                {
+                    "registered": meta.to_json()["metrics"]
+                    | {
+                        "instrument": instrument,
+                        "timeframe": timeframe,
+                        "version": meta.version,
+                        "role": meta.role,
+                        "artifact": meta.artifact_path,
+                    }
+                },
+                indent=2,
+                default=str,
+            )
+        )
         print(
             f"\nv{meta.version} registered as CHALLENGER — it shadows the champion "
             f"and serves nothing until `promote` (QN-046)."
@@ -115,8 +126,10 @@ async def cmd_promote(instrument: str, timeframe: str, version: int, force: bool
     try:
         registry = ModelRegistry(ModelStore(settings.model_dir), db)
         meta = await registry.promote(instrument, timeframe, version, force=force)
-        print(f"promoted {instrument}/{timeframe} v{meta.version} to champion"
-              + (" (FORCED)" if force else ""))
+        print(
+            f"promoted {instrument}/{timeframe} v{meta.version} to champion"
+            + (" (FORCED)" if force else "")
+        )
         return 0
     finally:
         await pool.close()
@@ -153,8 +166,11 @@ async def cmd_clusters(trigger: str) -> int:
             now=now,
         )
         await db.insert_cluster_set(cs)
-        print(json.dumps({"version": cs.version, "trigger": cs.trigger,
-                          "clusters": cs.clusters}, indent=2))
+        print(
+            json.dumps(
+                {"version": cs.version, "trigger": cs.trigger, "clusters": cs.clusters}, indent=2
+            )
+        )
         return 0
     finally:
         await pool.close()
@@ -172,8 +188,11 @@ def main(argv: list[str] | None = None) -> int:
     p_promote.add_argument("--instrument", required=True)
     p_promote.add_argument("--timeframe", default="H1")
     p_promote.add_argument("--version", type=int, required=True)
-    p_promote.add_argument("--force", action="store_true",
-                           help="override the min-shadow gate (audited operator action)")
+    p_promote.add_argument(
+        "--force",
+        action="store_true",
+        help="override the min-shadow gate (audited operator action)",
+    )
 
     p_clusters = sub.add_parser("clusters", help="recompute correlation clusters")
     p_clusters.add_argument("--trigger", default=TRIGGER_MANUAL)

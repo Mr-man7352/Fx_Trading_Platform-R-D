@@ -118,9 +118,7 @@ class FakeOanda:
         order = body["order"]
         client_id = order["clientExtensions"]["id"]
         if client_id in self._orders:
-            return httpx.Response(
-                400, json={"errorCode": "CLIENT_ORDER_ID_ALREADY_EXISTS"}
-            )
+            return httpx.Response(400, json={"errorCode": "CLIENT_ORDER_ID_ALREADY_EXISTS"})
         if self.reject_reason:
             return httpx.Response(
                 201,

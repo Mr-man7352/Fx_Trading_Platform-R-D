@@ -237,7 +237,7 @@ function makeDeps(options: {
     semaphore: new PrioritySemaphore(3),
     env,
   };
-  return { deps, db, exec, llm };
+  return { deps, db, exec, notif, llm };
 }
 
 const job = { instrument: 'EUR_USD', timeframe: 'H1', barTs: '2026-07-09T13:00:00.000Z' };
@@ -409,5 +409,78 @@ describe('sweepTradeOutcomes', () => {
     // risk = |1.0885 - 1.0845| * 10000 = 40 → R = 80/40 = 2
     expect(recorded[0]?.outcome.rMultiple).toBeCloseTo(2, 6);
     expect(recorded[0]?.outcome).toMatchObject({ exitReason: 'TP_HIT', holdingHours: 12 });
+  });
+});
+
+// ─── BE-121 — live canary ramp + one-tap confirm ─────────────────────────────
+
+describe('BE-121 — canary ramp on the first N live trades', () => {
+  const liveEnv = {
+    ...(env as unknown as Record<string, unknown>),
+    TRADING_MODE: 'live',
+    CANARY_CONFIRM_FIRST_N: 2,
+    CANARY_MAX_UNITS: 1_000,
+    CANARY_CONFIRM_TTL_MIN: 15,
+  } as unknown as Env;
+
+  function withLiveTradeCount(deps: SignalsWorkerDeps, count: number | 'never-called') {
+    (deps.prisma as unknown as { trade: { count: () => Promise<number> } }).trade = {
+      count: async () => {
+        if (count === 'never-called') throw new Error('trade.count must not be called');
+        return count;
+      },
+    };
+  }
+
+  it('inside the ramp: intent parked PENDING with clamped units, NO execution job, critical alert', async () => {
+    const { deps, db, exec, notif } = makeDeps({});
+    deps.env = liveEnv;
+    withLiveTradeCount(deps, 0);
+
+    const outcome = await processSignalJob(deps, job);
+    expect(outcome.outcome).toBe('canary_pending');
+    expect(db.intents).toHaveLength(1);
+    expect(db.intents[0]).toMatchObject({
+      status: 'pending',
+      units: 1_000, // clamped from 10_000 to CANARY_MAX_UNITS
+      tradingMode: 'live',
+    });
+    const riskGate = db.intents[0]?.riskGate as {
+      canary: { confirmRequired: boolean; unitsRequested: number };
+    };
+    expect(riskGate.canary).toMatchObject({ confirmRequired: true, unitsRequested: 10_000 });
+    // Agent + risk-gate approval alone must NOT execute during the ramp.
+    expect(exec.jobs).toHaveLength(0);
+    // One-tap confirm is solicited via a CRITICAL alert (Telegram+SMS path).
+    const alert = notif.jobs.find(
+      (j) => (j.data as { event?: string }).event === 'canary.confirm_required',
+    );
+    expect(alert).toBeDefined();
+    expect((alert?.data as { severity: string }).severity).toBe('critical');
+    expect(
+      db.audits.some(
+        (a) => (a.details as { action: string }).action === 'signal_cycle_canary_pending',
+      ),
+    ).toBe(true);
+  });
+
+  it('after N executed live trades the ramp is over: normal approve + enqueue', async () => {
+    const { deps, db, exec } = makeDeps({});
+    deps.env = liveEnv;
+    withLiveTradeCount(deps, 2); // count == CANARY_CONFIRM_FIRST_N
+
+    const outcome = await processSignalJob(deps, job);
+    expect(outcome.outcome).toBe('executed');
+    expect(db.intents[0]).toMatchObject({ status: 'approved', units: 10_000 });
+    expect(exec.jobs).toHaveLength(1);
+  });
+
+  it('paper mode never engages the canary (no live-count query, normal flow)', async () => {
+    const { deps, db, exec } = makeDeps({});
+    withLiveTradeCount(deps, 'never-called'); // throws if consulted
+    const outcome = await processSignalJob(deps, job);
+    expect(outcome.outcome).toBe('executed');
+    expect(db.intents[0]).toMatchObject({ status: 'approved' });
+    expect(exec.jobs).toHaveLength(1);
   });
 });

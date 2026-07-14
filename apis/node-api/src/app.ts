@@ -23,14 +23,15 @@ import { registerAuditRoutes } from './routes/audit.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { type BacktestRouteDeps, registerBacktestRoutes } from './routes/backtests.js';
 import { registerCalendarRoutes } from './routes/calendar.js';
+import { type GdprRouteDeps, registerGdprRoutes } from './routes/gdpr.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { type KillSwitchRouteDeps, registerKillSwitchRoutes } from './routes/kill-switch.js';
 import { registerMarketRoutes } from './routes/market.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
 import { registerQuantProxyRoutes } from './routes/quant.js';
 import { registerSettingsRoutes, type SettingsRouteDeps } from './routes/settings.js';
-import { registerSignalsRoutes } from './routes/signals.js';
-import { registerTradesRoutes } from './routes/trades.js';
+import { registerSignalsRoutes, type SignalsRouteDeps } from './routes/signals.js';
+import { registerTradesRoutes, type TradesRouteDeps } from './routes/trades.js';
 import { registerWsRoutes } from './routes/ws.js';
 
 declare module 'fastify' {
@@ -66,6 +67,21 @@ export interface BuildAppOptions {
    * checklist just reports kill-switch state as inactive-unknown=false.
    */
   settings?: SettingsRouteDeps | null;
+  /**
+   * QN-062 — signals route deps (fetch seam for the quant replay proxy).
+   * Optional: defaults to global fetch against QUANT_HTTP_URL.
+   */
+  signals?: SignalsRouteDeps | null;
+  /**
+   * BE-121 — trades route deps (execution queue + WS fan-out for the canary
+   * one-tap confirm). Without them the confirm endpoint answers 503.
+   */
+  trades?: TradesRouteDeps | null;
+  /**
+   * BE-132 — GDPR route deps (email sender test seam). Optional: defaults
+   * to the env-driven Resend/log sender.
+   */
+  gdpr?: GdprRouteDeps | null;
 }
 
 /**
@@ -204,12 +220,15 @@ export async function buildApp(env: Env, opts: BuildAppOptions = {}): Promise<Fa
   registerAuditRoutes(app); // BE-130 — GET /audit (503 without a DB client)
   registerAuthRoutes(app, env); // BE-030…037 — /auth/* + /admin/invites (skipped without a DB)
   registerMarketRoutes(app); // BE-042/BE-045 — /market/{instruments,candles,news}
-  registerSignalsRoutes(app); // BE-067 — GET /signals (agent-cycle summaries)
+  // BE-067 — GET /signals; QN-062/FE-060 — GET /signals/:id/replay
+  registerSignalsRoutes(app, opts.signals ?? {});
   registerKillSwitchRoutes(app, opts.killSwitch ?? null); // BE-072/073 — /settings/kill-switch
   registerBacktestRoutes(app, opts.backtests ?? null); // BE-090 — /backtests (Step 4.2)
   registerSettingsRoutes(app, opts.settings ?? null); // BE-100/101 — /settings + live-promotion
   registerCalendarRoutes(app); // BE-110 — GET /calendar (503 without a DB client)
-  registerTradesRoutes(app); // BE-054 — GET /api/trades (closes the FE-070 seam)
+  registerGdprRoutes(app, opts.gdpr ?? {}); // BE-132 — /gdpr/* (export + erasure)
+  // BE-054 — GET /api/trades; BE-121 — canary confirm/reject
+  registerTradesRoutes(app, opts.trades ?? null);
   registerQuantProxyRoutes(app); // QN-055 proxy — closes the FE-090 seam
 
   return app;

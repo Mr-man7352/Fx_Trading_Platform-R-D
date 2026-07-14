@@ -165,6 +165,16 @@ const EnvSchema = z.object({
   SIGNALS_E2E_BUDGET_MS: z.coerce.number().int().positive().default(180_000),
   /** BE-052 — mismatch action: halt (default) or flatten_and_halt. */
   RECONCILE_ACTION: z.enum(['halt', 'flatten_and_halt']).default('halt'),
+  /**
+   * BE-121 — canary go-live: the first N LIVE trades require a one-tap
+   * operator confirm before execution AND are size-clamped to the ramp cap.
+   * Counted against executed live trades in `trades` (deterministic, no
+   * extra state). Only consulted when TRADING_MODE=live.
+   */
+  CANARY_CONFIRM_FIRST_N: z.coerce.number().int().nonnegative().default(10),
+  CANARY_MAX_UNITS: z.coerce.number().positive().default(1_000),
+  /** Pending canary confirms expire after this (market moved on). */
+  CANARY_CONFIRM_TTL_MIN: z.coerce.number().positive().default(15),
   /** BE-051 — trade manager overrides. */
   TRADE_MANAGER_PARTIAL_TRIGGER_R: z.coerce.number().positive().default(1),
   TRADE_MANAGER_PARTIAL_FRACTION: z.coerce.number().gt(0).lte(1).default(0.5),

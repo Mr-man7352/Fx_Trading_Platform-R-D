@@ -54,4 +54,43 @@ describe('evaluateLivePromotion (BE-101)', () => {
       'no finished backtest',
     );
   });
+
+  // ── Step 6.4 — BE-122 gate + QN-061 report details ─────────────────────────
+
+  it('BE-122: any non-PASS paper verdict blocks live (FAIL, EXTEND, UNDERPOWERED)', () => {
+    for (const verdict of ['FAIL', 'EXTEND', 'UNDERPOWERED']) {
+      const res = evaluateLivePromotion({
+        ...ALL_MET,
+        paperValidation: { verdict, at: new Date('2026-07-01T00:00:00Z') },
+      });
+      expect(res.allowed).toBe(false);
+      const item = res.checklist.find((c) => c.id === 'paper_window_90d');
+      expect(item?.ok).toBe(false);
+      expect(item?.detail).toContain(verdict);
+    }
+  });
+
+  it('BE-122: a PASS documents the powered comparison in the checklist detail', () => {
+    const res = evaluateLivePromotion({
+      ...ALL_MET,
+      paperValidation: {
+        verdict: 'PASS',
+        at: new Date('2026-07-01T00:00:00Z'),
+        underpowered: false,
+      },
+    });
+    expect(res.checklist.find((c) => c.id === 'paper_window_90d')?.detail).toContain(
+      'powered comparison documented',
+    );
+  });
+
+  it('QN-061: the report hash surfaces in the checklist for audit', () => {
+    const res = evaluateLivePromotion({
+      ...ALL_MET,
+      signedRiskReport: { at: new Date('2026-07-02T00:00:00Z'), sha256: 'abc123def456' },
+    });
+    expect(res.checklist.find((c) => c.id === 'signed_risk_report')?.detail).toContain(
+      'sha256 abc123def456',
+    );
+  });
 });

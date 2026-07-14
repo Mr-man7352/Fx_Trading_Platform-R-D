@@ -22,9 +22,7 @@ from tests.execution.fake_oanda import FakeOanda
 
 def _oanda() -> tuple[BrokerAdapter, Any]:
     fake = FakeOanda()
-    adapter = OandaAdapter(
-        api_token="test", account_id=fake.account_id, client=fake.client()
-    )
+    adapter = OandaAdapter(api_token="test", account_id=fake.account_id, client=fake.client())
     return adapter, fake
 
 

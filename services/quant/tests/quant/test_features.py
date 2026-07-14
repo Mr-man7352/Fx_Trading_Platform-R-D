@@ -61,8 +61,9 @@ def test_session_labels_emitted_per_bar() -> None:
     valid = {"TOKYO", "LONDON", "NEW_YORK", "OVERLAP", "OFF_HOURS"}
     assert set(feats["session_label"].unique()) <= valid
     assert len(set(feats["session_label"].unique())) >= 3  # hourly walk hits several
-    one_hots = feats[["sess_tokyo", "sess_london", "sess_new_york", "sess_overlap",
-                      "sess_off_hours"]].sum(axis=1)
+    one_hots = feats[
+        ["sess_tokyo", "sess_london", "sess_new_york", "sess_overlap", "sess_off_hours"]
+    ].sum(axis=1)
     assert (one_hots == 1.0).all()
 
 
@@ -88,9 +89,7 @@ def test_macro_join_is_point_in_time() -> None:
 def test_sentiment_window_is_point_in_time() -> None:
     candles = make_candles(100, seed=4)
     bar_50 = candles["ts"].iloc[50]
-    sentiment = pd.DataFrame(
-        {"published_at": [bar_50 + timedelta(seconds=1)], "score": [0.9]}
-    )
+    sentiment = pd.DataFrame({"published_at": [bar_50 + timedelta(seconds=1)], "score": [0.9]})
     feats = compute_features(candles, sentiment=sentiment)
     assert feats["sent_n_24h"].iloc[50] == 0.0  # published after the bar
     assert feats["sent_n_24h"].iloc[51] == 1.0
@@ -99,9 +98,7 @@ def test_sentiment_window_is_point_in_time() -> None:
 
 def test_spread_features_causal_percentile() -> None:
     candles = make_candles(300, seed=6)
-    spreads = pd.DataFrame(
-        {"ts": candles["ts"], "spread_pips": np.linspace(1.0, 3.0, 300)}
-    )
+    spreads = pd.DataFrame({"ts": candles["ts"], "spread_pips": np.linspace(1.0, 3.0, 300)})
     feats = compute_features(candles, spreads=spreads)
     # Monotonically rising spread ⇒ trailing percentile of the last bar ≈ 1.
     assert feats["spread_pctile"].iloc[-1] > 0.95

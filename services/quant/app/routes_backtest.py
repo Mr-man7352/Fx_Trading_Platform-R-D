@@ -37,7 +37,7 @@ _runtime: QuantRuntime | None = None
 
 
 def get_runtime() -> QuantRuntime:
-    global _runtime  # noqa: PLW0603 — process-lifetime cache, mirrors servicer
+    global _runtime
     if _runtime is None:
         _runtime = QuantRuntime()
     return _runtime
@@ -45,7 +45,7 @@ def get_runtime() -> QuantRuntime:
 
 def set_runtime(runtime: QuantRuntime | None) -> None:
     """Test seam."""
-    global _runtime  # noqa: PLW0603
+    global _runtime
     _runtime = runtime
 
 
@@ -77,7 +77,7 @@ async def model_calibration(instrument: str, timeframe: str, version: int) -> di
     if target is None:
         raise HTTPException(404, f"no model v{version} for {instrument}/{timeframe}")
     # Reliability curve lives in the artifact metadata (registry store).
-    loaded = registry._store.load(instrument, timeframe, version)  # noqa: SLF001 — read-only artifact access
+    loaded = registry._store.load(instrument, timeframe, version)
     return {
         "instrument": instrument,
         "timeframe": timeframe,
@@ -97,8 +97,9 @@ async def regime_timeline(
     bars: int = Query(default=500, ge=MIN_BARS, le=5000),
 ) -> dict[str, Any]:
     """QN-055 AC: regime timeline for the instrument."""
-    import numpy as np  # noqa: PLC0415
-    from datetime import UTC, datetime  # noqa: PLC0415
+    from datetime import UTC, datetime
+
+    import numpy as np
 
     runtime = get_runtime()
     try:
@@ -111,7 +112,7 @@ async def regime_timeline(
             422, f"{instrument}/{timeframe}: {len(candles)} bars < {MIN_BARS} required"
         )
     returns = np.log(candles["close"]).diff()
-    import pandas as pd  # noqa: PLC0415
+    import pandas as pd
 
     result = detect_trend_regime(pd.Series(returns), seed=7)
     ts = candles["ts"].tolist()

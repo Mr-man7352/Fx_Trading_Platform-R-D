@@ -89,9 +89,7 @@ def test_lot_pip_value_standard_lot() -> None:
 def test_margin_eur_usd_gbp_account() -> None:
     # 10k × 1.10 = 11_000 USD notional × 0.0333 → × 0.8 = 293.04 GBP
     expected = 10_000 * 1.10 * 0.0333 * 0.8
-    assert margin_required("EUR_USD", 10_000, 1.10, 0.0333, "GBP", RATES) == pytest.approx(
-        expected
-    )
+    assert margin_required("EUR_USD", 10_000, 1.10, 0.0333, "GBP", RATES) == pytest.approx(expected)
 
 
 def test_margin_usd_jpy_gbp_account() -> None:

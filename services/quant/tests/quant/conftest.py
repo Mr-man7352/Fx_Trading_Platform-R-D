@@ -92,17 +92,20 @@ class FakeQuantDb:
         return df[df["ts"] <= pd.Timestamp(end)].tail(limit).reset_index(drop=True)
 
     async def fetch_macro(self, end: datetime, per_series: int = 200) -> pd.DataFrame:
-        return self.macro[self.macro["release_ts"] <= pd.Timestamp(end)].reset_index(drop=True) \
-            if len(self.macro) else self.macro
+        return (
+            self.macro[self.macro["release_ts"] <= pd.Timestamp(end)].reset_index(drop=True)
+            if len(self.macro)
+            else self.macro
+        )
 
     async def fetch_sentiment(
         self, instrument: str | None, end: datetime, lookback_hours: int = 96
     ) -> pd.DataFrame:
         if not len(self.sentiment):
             return self.sentiment
-        return self.sentiment[
-            self.sentiment["published_at"] <= pd.Timestamp(end)
-        ].reset_index(drop=True)
+        return self.sentiment[self.sentiment["published_at"] <= pd.Timestamp(end)].reset_index(
+            drop=True
+        )
 
     async def latest_closes(self) -> dict[str, float]:
         out: dict[str, float] = {}

@@ -88,9 +88,7 @@ class QuantRuntime:
                 await self.db(),
                 await self.registry(),
                 lookback_bars=settings.pipeline_lookback_bars,
-                label_params=LabelParams(
-                    horizon=settings.label_horizon_bars, rr=settings.min_rr
-                ),
+                label_params=LabelParams(horizon=settings.label_horizon_bars, rr=settings.min_rr),
                 cluster_params=ClusterParams(
                     lookback_days=settings.corr_lookback_days,
                     threshold=settings.corr_threshold,

@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     corr_event_lookback_days: int = 20
     corr_vol_spike_mult: float = 2.0
 
+    # ── Step 6.4 (QN-061) — signed risk report ──
+    # HMAC key for report signing; generation refuses to run without it
+    # (an unsigned report must never satisfy the BE-101 checklist).
+    report_signing_key: str | None = None
+
     @property
     def instruments(self) -> list[str]:
         return [s.strip() for s in self.market_instruments.split(",") if s.strip()]

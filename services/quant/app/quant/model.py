@@ -129,9 +129,7 @@ def expected_calibration_error(
     n_total = sum(r["n"] for r in rows)
     if n_total == 0:
         return math.nan
-    return float(
-        sum(abs(r["mean_pred"] - r["frac_pos"]) * r["n"] for r in rows) / n_total
-    )
+    return float(sum(abs(r["mean_pred"] - r["frac_pos"]) * r["n"] for r in rows) / n_total)
 
 
 @dataclass(slots=True)
@@ -238,7 +236,8 @@ def predict_proba(
 ) -> float:
     """Calibrated P(profitable) for one feature map (missing features → NaN,
     which LightGBM handles natively as its missing-value path)."""
-    row = pd.DataFrame([[features.get(name, math.nan) for name in feature_names]],
-                       columns=feature_names)
+    row = pd.DataFrame(
+        [[features.get(name, math.nan) for name in feature_names]], columns=feature_names
+    )
     p_raw = float(np.asarray(booster.predict(row))[0])
     return float(calibrator.apply(p_raw))

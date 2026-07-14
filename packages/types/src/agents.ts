@@ -439,6 +439,88 @@ export const SignalsResponseSchema = z.object({
 });
 export type SignalsResponse = z.infer<typeof SignalsResponseSchema>;
 
+// ─── QN-062 / FE-060 — decision replay from provenance ──────────────────────
+// Node-internal (not in contractSchemas): the quant sub-report is produced by
+// the Python `POST /replay/quant` route and passed through verbatim.
+
+/** One §9.5 memory row exactly as it was in the agent's context (BE-064). */
+export const ReplayMemorySchema = z.object({
+  id: z.uuid(),
+  agentRole: z.string(),
+  barTs: z.iso.datetime(),
+  summary: z.string(),
+  /** Outcome attached later by the trade-close sweep — null if still open. */
+  outcome: z.unknown().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type ReplayMemory = z.infer<typeof ReplayMemorySchema>;
+
+/** One agent LLM call replayed from `agent_runs` (LLM cached mode: the stored
+ * output IS the cache — no model is re-invoked). */
+export const ReplayAgentRunSchema = z.object({
+  id: z.uuid(),
+  agentRole: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  tier: z.string(),
+  promptHash: z.string(),
+  modelDowngraded: z.boolean(),
+  downgradeReason: z.string().nullable(),
+  failedOver: z.boolean(),
+  inputTokens: z.number().int(),
+  outputTokens: z.number().int(),
+  costUsd: z.number(),
+  latencyMs: z.number().int(),
+  output: z.unknown().nullable(),
+  /** Exact memory context via retrieved_memory_ids (QN-062 AC). */
+  retrievedMemories: z.array(ReplayMemorySchema),
+  createdAt: z.iso.datetime(),
+});
+export type ReplayAgentRun = z.infer<typeof ReplayAgentRunSchema>;
+
+/** One debate utterance (bull/bear/judge), FE-060 full-transcript detail. */
+export const ReplayDebateTurnSchema = z.object({
+  round: z.number().int(),
+  seq: z.number().int(),
+  speaker: z.string(),
+  content: z.string(),
+});
+export type ReplayDebateTurn = z.infer<typeof ReplayDebateTurnSchema>;
+
+/** Quant-leg determinism check — produced by Python `POST /replay/quant`.
+ * `report` is the Python payload passed through (feature drift, candidate
+ * comparison, notes); `available: false` + `detail` when the quant service
+ * could not be reached (transcript is still served — honest seam). */
+export const ReplayQuantSectionSchema = z.object({
+  available: z.boolean(),
+  detail: z.string().nullable(),
+  report: z.unknown().nullable(),
+});
+export type ReplayQuantSection = z.infer<typeof ReplayQuantSectionSchema>;
+
+export const SignalReplayResponseSchema = z.object({
+  signal: z.object({
+    id: z.uuid(),
+    createdAt: z.iso.datetime(),
+    barTs: z.iso.datetime(),
+    instrument: z.string(),
+    timeframe: TimeframeSchema,
+    side: TradeSideSchema,
+    entryPrice: z.number().nullable(),
+    stopLoss: z.number().nullable(),
+    takeProfit: z.number().nullable(),
+    probability: z.number().nullable(),
+    metaProbability: z.number().nullable(),
+    status: SignalStatusSchema,
+    /** Feature vector persisted with the signal (the quant replay input). */
+    features: z.unknown().nullable(),
+  }),
+  transcript: z.array(ReplayDebateTurnSchema),
+  agentRuns: z.array(ReplayAgentRunSchema),
+  quant: ReplayQuantSectionSchema,
+});
+export type SignalReplayResponse = z.infer<typeof SignalReplayResponseSchema>;
+
 /**
  * Validate an LLM's raw JSON against its role's output schema. Callers map
  * `ok: false` to HOLD/NEUTRAL with reason `SCHEMA_INVALID` — never throw.

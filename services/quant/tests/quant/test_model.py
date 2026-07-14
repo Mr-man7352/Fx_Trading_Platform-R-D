@@ -102,11 +102,15 @@ class TestCalibrator:
 class TestPredict:
     def test_scalar_calibrated_probability(self, trained) -> None:
         p = predict_proba(
-            trained.booster, trained.calibrator, trained.feature_names,
+            trained.booster,
+            trained.calibrator,
+            trained.feature_names,
             {"x1": 2.0, "x2": 0.0, "x3": 0.0},
         )
         q = predict_proba(
-            trained.booster, trained.calibrator, trained.feature_names,
+            trained.booster,
+            trained.calibrator,
+            trained.feature_names,
             {"x1": -2.0, "x2": 0.0, "x3": 0.0},
         )
         assert 0.0 <= q < p <= 1.0  # signal direction preserved

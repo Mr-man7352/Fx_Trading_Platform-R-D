@@ -71,6 +71,21 @@ def create_app() -> FastAPI:
 
     app.include_router(backtest_router)
 
+    # Step 6.1 — QN-060 paper-window validation (live-gate evidence).
+    from app.routes_validation import router as validation_router
+
+    app.include_router(validation_router)
+
+    # Step 6.3 — QN-062 quant-leg decision replay (side-effect-free).
+    from app.routes_replay import router as replay_router
+
+    app.include_router(replay_router)
+
+    # Step 6.4 — QN-061 signed risk report (live-promotion evidence).
+    from app.routes_report import router as report_router
+
+    app.include_router(report_router)
+
     return app
 
 

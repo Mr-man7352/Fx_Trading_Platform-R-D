@@ -53,9 +53,7 @@ def test_causal_feature_join_never_sees_future_headlines():
             "volume": 100.0,
         }
     )
-    early = pd.DataFrame(
-        {"published_at": [start + timedelta(hours=10)], "score": [0.5]}
-    )
+    early = pd.DataFrame({"published_at": [start + timedelta(hours=10)], "score": [0.5]})
     with_future = pd.concat(
         [early, pd.DataFrame({"published_at": [start + timedelta(hours=80)], "score": [-0.9]})],
         ignore_index=True,
@@ -69,9 +67,7 @@ def test_causal_feature_join_never_sees_future_headlines():
 
 
 def test_assert_frame_point_in_time_raises_on_late_rows():
-    frame = pd.DataFrame(
-        {"release_ts": [datetime(2026, 7, 10, tzinfo=UTC)], "value": [1.0]}
-    )
+    frame = pd.DataFrame({"release_ts": [datetime(2026, 7, 10, tzinfo=UTC)], "value": [1.0]})
     with pytest.raises(LookAheadError):
         assert_frame_point_in_time(frame, "release_ts", pd.Timestamp("2026-07-08", tz="UTC"))
     # In-bounds rows pass silently.

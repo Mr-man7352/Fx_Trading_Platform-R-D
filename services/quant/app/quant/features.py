@@ -131,9 +131,7 @@ def _session_features(ts: pd.Series) -> pd.DataFrame:
     out = pd.DataFrame({"ts": ts, "session_label": [str(lb) for lb in labels]})
     for lb, col in _SESSION_ONE_HOTS.items():
         out[col] = [1.0 if x == lb else 0.0 for x in labels]
-    out["triple_swap_day"] = [
-        1.0 if is_triple_swap_day(t.to_pydatetime()) else 0.0 for t in ts
-    ]
+    out["triple_swap_day"] = [1.0 if is_triple_swap_day(t.to_pydatetime()) else 0.0 for t in ts]
     out["weekend_gap_window"] = [
         1.0 if in_weekend_gap_window(t.to_pydatetime()) else 0.0 for t in ts
     ]
@@ -235,10 +233,7 @@ def compute_features(
         out["spread_pips"] = joined["spread_pips"].to_numpy()
         # Causal percentile: rank of each observation within its trailing window.
         out["spread_pctile"] = (
-            out["spread_pips"]
-            .rolling(500, min_periods=20)
-            .rank(pct=True)
-            .to_numpy()
+            out["spread_pips"].rolling(500, min_periods=20).rank(pct=True).to_numpy()
         )
     return out
 

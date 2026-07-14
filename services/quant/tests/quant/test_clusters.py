@@ -69,9 +69,7 @@ class TestVolSpike:
 
     def test_shock_detected(self) -> None:
         rng = np.random.default_rng(7)
-        series = np.concatenate(
-            [rng.standard_normal(120) * 0.004, rng.standard_normal(5) * 0.03]
-        )
+        series = np.concatenate([rng.standard_normal(120) * 0.004, rng.standard_normal(5) * 0.03])
         assert realized_vol_spike(pd.Series(series)) is True
 
     def test_short_history_never_spikes(self) -> None:
@@ -101,8 +99,7 @@ class TestRefreshReason:
     def test_event_triggers_beat_schedule(self) -> None:
         # QN-048 AC: liquidity transition / vol spike recompute immediately.
         assert (
-            refresh_reason(NOW, self._last(1), params=PARAMS, vol_spike=True)
-            == TRIGGER_VOL_SPIKE
+            refresh_reason(NOW, self._last(1), params=PARAMS, vol_spike=True) == TRIGGER_VOL_SPIKE
         )
         assert (
             refresh_reason(NOW, self._last(1), params=PARAMS, liquidity_changed=True)
@@ -143,9 +140,7 @@ class TestRiskOffFixture:
             threshold=0.7,
             clusters=[["EUR_USD"], ["GBP_USD"]],
         )
-        spike = realized_vol_spike(
-            returns["EUR_USD"], window=5, baseline=50, mult=2.0
-        )
+        spike = realized_vol_spike(returns["EUR_USD"], window=5, baseline=50, mult=2.0)
         assert spike is True
         reason = refresh_reason(NOW, last, params=PARAMS, vol_spike=spike)
         assert reason == TRIGGER_VOL_SPIKE  # fires 5 days before the weekly

@@ -33,12 +33,6 @@ dependencies = [
   "lightgbm>=4.5",          # QN-043 meta-model
   "hmmlearn>=0.3.3",        # QN-041 regime HMM
   "ta-lib>=0.6",            # QN-040 indicators (binary wheels incl. C lib)
-  # QN-050 — vectorised equity-curve metrics for the backtest engine. Pulls
-  # numba (py3.13 support arrived in numba 0.61). The deterministic FILL
-  # ledger is our own numpy code (bracket semantics shared with
-  # app.quant.labels); the engine degrades to an identical numpy metrics
-  # fallback when the import fails, so tests never hard-depend on numba.
-  "vectorbt>=0.28.1",
   "fx-common",
 ]
 
@@ -61,6 +55,17 @@ dev = [
 ml = [
   "transformers>=4.44",
   "torch>=2.4",
+]
+# QN-050 — optional vectorbt metrics backend for the backtest engine. Moved
+# out of the default sync (2026-07-14): numba→llvmlite publishes NO Intel-mac
+# wheels (llvmlite 0.48 is arm64-mac/linux only), so `uv sync` on an Intel
+# Mac attempted an sdist build needing cmake+LLVM. The deterministic FILL
+# ledger is our own numpy code; the engine degrades to an IDENTICAL numpy
+# metrics fallback (`metrics_backend` in every report records which backend
+# ran) — tests never hard-depend on numba. Install where wheels exist
+# (linux CI, arm64 macs): `uv sync --group vbt`.
+vbt = [
+  "vectorbt>=0.28.1",
 ]
 
 [build-system]

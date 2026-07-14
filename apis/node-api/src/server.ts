@@ -15,6 +15,8 @@ import { QuantExecutionClient } from './execution/quant-client.js';
 import {
   BACKTESTS_QUEUE,
   type BacktestJob,
+  EXECUTION_QUEUE,
+  type ExecutionJob,
   NOTIFICATIONS_QUEUE,
   type NotificationJob,
 } from './workers/queues.js';
@@ -36,6 +38,10 @@ const notificationsQueue = new Queue<NotificationJob>(NOTIFICATIONS_QUEUE, {
 });
 // BE-090 — backtest jobs are produced here, consumed by the backtests worker.
 const backtestsQueue = new Queue<BacktestJob>(BACKTESTS_QUEUE, {
+  connection: cmdRedis as unknown as ConnectionOptions,
+});
+// BE-121 — confirmed canary intents are enqueued for the execution worker.
+const executionQueue = new Queue<ExecutionJob>(EXECUTION_QUEUE, {
   connection: cmdRedis as unknown as ConnectionOptions,
 });
 // BE-036 — real step-up verifier: the kill-switch checks a supplied TOTP /
@@ -69,6 +75,8 @@ const app = await buildApp(env, {
   // BE-100/101 — settings routes: WS fan-out + kill-switch state for the
   // live-promotion checklist.
   settings: { redis: cmdRedis, killSwitch: killSwitchStore },
+  // BE-121 — canary one-tap confirm enqueues execution + fans out over WS.
+  trades: { executionQueue, redis: cmdRedis },
 });
 
 const wsRedis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
@@ -78,6 +86,7 @@ app.addHook('onClose', async () => {
   wsRedis.disconnect();
   await notificationsQueue.close();
   await backtestsQueue.close();
+  await executionQueue.close();
   cmdRedis.disconnect();
 });
 

@@ -13,9 +13,7 @@ from app.quant.labels import LabelParams
 
 
 def test_mask_feature_groups_only_touches_prefixed_columns():
-    f = pd.DataFrame(
-        {"rsi_14": [50.0], "macro_cot_net": [1.2], "sent_mean_24h": [0.3]}
-    )
+    f = pd.DataFrame({"rsi_14": [50.0], "macro_cot_net": [1.2], "sent_mean_24h": [0.3]})
     masked = mask_feature_groups(f, ("macro_", "sent_"))
     assert masked["rsi_14"].iloc[0] == 50.0
     assert np.isnan(masked["macro_cot_net"].iloc[0])

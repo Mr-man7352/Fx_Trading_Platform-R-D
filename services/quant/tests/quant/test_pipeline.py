@@ -131,8 +131,6 @@ class TestClusterHook:
         await pipeline.run(INSTRUMENT, "H1", bar)
         assert len(trending_db.cluster_sets) == 1
         # An hour later, same liquidity, no spike, weekly not due → no new set.
-        trending_db.candles[(INSTRUMENT, "H1")] = make_candles(
-            601, drift=0.003, vol=0.001, seed=23
-        )
+        trending_db.candles[(INSTRUMENT, "H1")] = make_candles(601, drift=0.003, vol=0.001, seed=23)
         await pipeline.run(INSTRUMENT, "H1", bar + timedelta(hours=1))
         assert len(trending_db.cluster_sets) == 1

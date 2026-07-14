@@ -217,19 +217,31 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: SettingsRoute
   ): Promise<LivePromotionFacts> {
     const prisma = fastify.prisma;
     if (!prisma) throw new Error('gatherFacts requires a DB client');
-    const [champion, latestFinished, killSwitchActive] = await Promise.all([
-      prisma.modelRegistryEntry.findFirst({
-        where: { role: 'champion' },
-        orderBy: { promotedAt: 'desc' },
-        select: { instrument: true, timeframe: true, version: true },
-      }),
-      prisma.backtestRun.findFirst({
-        where: { status: 'finished', validationVerdict: { not: null } },
-        orderBy: { finishedAt: 'desc' },
-        select: { validationVerdict: true },
-      }),
-      routeDeps?.killSwitch ? routeDeps.killSwitch.isActive() : Promise.resolve(false),
-    ]);
+    const [champion, latestFinished, latestPaperValidation, killSwitchActive] = await Promise.all(
+      [
+        prisma.modelRegistryEntry.findFirst({
+          where: { role: 'champion' },
+          orderBy: { promotedAt: 'desc' },
+          select: { instrument: true, timeframe: true, version: true },
+        }),
+        prisma.backtestRun.findFirst({
+          where: { status: 'finished', validationVerdict: { not: null } },
+          orderBy: { finishedAt: 'desc' },
+          select: { validationVerdict: true },
+        }),
+        // QN-060 — latest paper-validation verdict row (quant service writes it).
+        prisma.paperValidationRun.findFirst({
+          orderBy: { createdAt: 'desc' },
+          select: { verdict: true, createdAt: true, underpowered: true },
+        }),
+        routeDeps?.killSwitch ? routeDeps.killSwitch.isActive() : Promise.resolve(false),
+      ],
+    );
+    // QN-061 — latest signed risk report (quant service writes it).
+    const latestRiskReport = await prisma.riskReport.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true, sha256: true },
+    });
     return {
       stepUpFresh: isStepUpFresh(stepUp2FAAt, env.STEP_UP_2FA_TTL_MS),
       champion: champion
@@ -240,9 +252,16 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: SettingsRoute
           }
         : null,
       latestValidationVerdict: latestFinished?.validationVerdict ?? null,
-      // QN-060 / QN-061 are Phase 6 — no record can exist yet (fail-safe unmet).
-      paperValidation: null,
-      signedRiskReport: null,
+      paperValidation: latestPaperValidation
+        ? {
+            verdict: latestPaperValidation.verdict,
+            at: latestPaperValidation.createdAt,
+            underpowered: latestPaperValidation.underpowered,
+          }
+        : null,
+      signedRiskReport: latestRiskReport
+        ? { at: latestRiskReport.createdAt, sha256: latestRiskReport.sha256 }
+        : null,
       killSwitchActive,
     };
   }

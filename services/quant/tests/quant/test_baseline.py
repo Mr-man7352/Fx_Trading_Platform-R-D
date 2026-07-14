@@ -62,8 +62,10 @@ class TestRules:
 
     def test_conflicting_rules_stand_down(self) -> None:
         row = _row(
-            ema_20_50_spread_atr=0.8, adx_14=35.0,  # trend long
-            dist_dc_low_20_atr=-0.5, range_atr=1.5,  # breakout short
+            ema_20_50_spread_atr=0.8,
+            adx_14=35.0,  # trend long
+            dist_dc_low_20_atr=-0.5,
+            range_atr=1.5,  # breakout short
         )
         sig = evaluate_baseline(row, instrument="EUR_USD", timeframe="H1")
         assert sig.would_trade is False

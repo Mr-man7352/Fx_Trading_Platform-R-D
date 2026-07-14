@@ -164,9 +164,7 @@ def fold_stability(returns: pd.Series, *, n_folds: int = 3, seed: int = DEFAULT_
     return float(np.mean(scores))
 
 
-def liquidity_regime(
-    spread_pctile: float | None, volume_pctile: float | None
-) -> LiquidityRegime:
+def liquidity_regime(spread_pctile: float | None, volume_pctile: float | None) -> LiquidityRegime:
     """Spread/volume percentiles (0..1, trailing causal window) → liquidity label.
 
     Wide spreads or thin volume ⇒ LOW (Christmas week, Asian session for EUR

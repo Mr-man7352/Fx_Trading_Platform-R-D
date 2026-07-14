@@ -111,7 +111,18 @@ class QuantPipeline:
         self._seed = regime_seed
         self._last_liquidity: dict[str, LiquidityRegime] = {}
 
-    async def run(self, instrument: str, timeframe: str, bar_ts: datetime) -> PipelineResult:
+    async def run(
+        self,
+        instrument: str,
+        timeframe: str,
+        bar_ts: datetime,
+        *,
+        persist: bool = True,
+    ) -> PipelineResult:
+        """One deterministic bar. `persist=False` (QN-062 replay) skips ALL
+        writes (baseline row, features upsert, cluster refresh) — same
+        computation, zero side effects, so a replay can never contaminate
+        the provenance it is checking."""
         candles = await self._db.fetch_candles(instrument, timeframe, bar_ts, self._lookback)
         if len(candles) < MIN_BARS:
             raise InsufficientDataError(
@@ -126,25 +137,29 @@ class QuantPipeline:
         vec = feature_vector(last)
 
         regime = detect_trend_regime(feats["ret_1"], seed=self._seed)
-        spread_pct = float(last["spread_pctile"]) if "spread_pctile" in feats and pd.notna(
-            last.get("spread_pctile")
-        ) else None
+        spread_pct = (
+            float(last["spread_pctile"])
+            if "spread_pctile" in feats and pd.notna(last.get("spread_pctile"))
+            else None
+        )
         vol_pct = volume_pctile(candles["volume"])
         liquidity = liquidity_regime(spread_pct, vol_pct)
         vec["regime_entropy"] = regime.entropy
 
-        # QN-045 — baseline persists on every processed bar, no matter what.
+        # QN-045 — baseline persists on every processed bar, no matter what
+        # (except side-effect-free QN-062 replays).
         baseline = evaluate_baseline(last, instrument=instrument, timeframe=timeframe)
-        await self._db.insert_baseline_signal(baseline)
-        await self._db.upsert_features(
-            instrument=instrument,
-            timeframe=timeframe,
-            bar_ts=bar_ts,
-            version=FEATURE_SET_VERSION,
-            session_label=str(last["session_label"]),
-            liquidity_regime=str(liquidity),
-            features=vec,
-        )
+        if persist:
+            await self._db.insert_baseline_signal(baseline)
+            await self._db.upsert_features(
+                instrument=instrument,
+                timeframe=timeframe,
+                bar_ts=bar_ts,
+                version=FEATURE_SET_VERSION,
+                session_label=str(last["session_label"]),
+                liquidity_regime=str(liquidity),
+                features=vec,
+            )
 
         candidate, challenger_p = await self._score_candidate(
             instrument,
@@ -154,7 +169,9 @@ class QuantPipeline:
             atr=float(last.get("atr_14", float("nan"))),
             entry=float(candles["close"].iloc[-1]),
         )
-        meta = await self._maybe_refresh_clusters(instrument, liquidity, feats["ret_1"], bar_ts)
+        meta: dict[str, Any] = {}
+        if persist:
+            meta = await self._maybe_refresh_clusters(instrument, liquidity, feats["ret_1"], bar_ts)
 
         return PipelineResult(
             instrument=instrument,
@@ -195,9 +212,7 @@ class QuantPipeline:
             challenger_p = predict_proba(
                 challenger.booster, challenger.calibrator, challenger.meta.feature_names, x
             )
-            await self._registry.record_shadow(
-                instrument, timeframe, challenger.meta.version
-            )
+            await self._registry.record_shadow(instrument, timeframe, challenger.meta.version)
         if champion is None:
             log.info(
                 "gate_skip no champion model instrument=%s baseline_side=%s",

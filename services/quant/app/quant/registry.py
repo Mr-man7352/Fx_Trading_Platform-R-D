@@ -86,7 +86,11 @@ class RegistryDb(Protocol):
     async def list_models(self, instrument: str, timeframe: str) -> list[ModelMetadata]: ...
 
     async def set_role(
-        self, instrument: str, timeframe: str, version: int, role: str,
+        self,
+        instrument: str,
+        timeframe: str,
+        version: int,
+        role: str,
         promoted_at: datetime | None = None,
     ) -> None: ...
 

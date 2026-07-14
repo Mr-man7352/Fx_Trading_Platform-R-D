@@ -33,7 +33,7 @@ def sentiment_leakage_check(
     (used by the unit test that PROVES the check catches a poisoned frame).
     """
     if sentiment is None or sentiment.empty:
-        return {"sentiment_rows": 0, "checked_bars": int(len(bar_ts)), "leakage": False}
+        return {"sentiment_rows": 0, "checked_bars": len(bar_ts), "leakage": False}
 
     s = sentiment.copy()
     s["published_at"] = pd.to_datetime(s["published_at"], utc=True)
@@ -49,8 +49,8 @@ def sentiment_leakage_check(
 
     leaked = bool(violation.any())
     report = {
-        "sentiment_rows": int(len(s)),
-        "checked_bars": int(len(bars)),
+        "sentiment_rows": len(s),
+        "checked_bars": len(bars),
         "leakage": leaked,
         "rule": "published_at <= bar_ts",
     }
@@ -68,7 +68,9 @@ def assert_frame_point_in_time(
     if frame.empty:
         return
     ts = pd.to_datetime(frame[time_column], utc=True)
-    late = ts > pd.Timestamp(as_of).tz_convert("UTC") if pd.Timestamp(as_of).tzinfo else ts > pd.Timestamp(as_of, tz="UTC")
+    bound = pd.Timestamp(as_of)
+    bound = bound.tz_convert("UTC") if bound.tzinfo else bound.tz_localize("UTC")
+    late = ts > bound
     if bool(late.any()):
         raise LookAheadError(
             f"{time_column}: {int(late.sum())} row(s) post-date the backtest as-of bound"

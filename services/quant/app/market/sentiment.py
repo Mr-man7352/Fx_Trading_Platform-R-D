@@ -72,9 +72,7 @@ class FinBertModel:
                 raise RuntimeError(
                     "FinBERT needs the 'ml' dependency-group: `uv sync --group ml`"
                 ) from exc
-            self._pipeline = pipeline(
-                "text-classification", model=self._model_id, top_k=None
-            )
+            self._pipeline = pipeline("text-classification", model=self._model_id, top_k=None)
         return self._pipeline
 
     def score(self, texts: list[str]) -> list[SentimentScore]:

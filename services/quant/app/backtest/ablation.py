@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from app.backtest.engine import BacktestEngine, BacktestParams, ProbaFn
@@ -41,7 +42,7 @@ def mask_feature_groups(features: pd.DataFrame, prefixes: tuple[str, ...]) -> pd
 
 
 def masked_proba_fn(base: ProbaFn, prefixes: tuple[str, ...]) -> ProbaFn:
-    def fn(features: pd.DataFrame, sides: pd.Series):
+    def fn(features: pd.DataFrame, sides: pd.Series) -> np.ndarray:
         return base(mask_feature_groups(features, prefixes), sides)
 
     return fn
@@ -68,10 +69,10 @@ def run_ablations(
             sentiment=sentiment,
             spreads=spreads,
         )
-        report = engine.run()
+        variant_report = engine.run()
         variants[name] = {
             "masked_prefixes": list(prefixes),
-            "metrics": report["metrics"],
+            "metrics": variant_report["metrics"],
         }
 
     full = variants["full"]["metrics"]

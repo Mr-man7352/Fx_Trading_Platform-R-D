@@ -30,9 +30,10 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -155,7 +156,7 @@ def _numpy_equity_metrics(bar_returns: pd.Series) -> dict[str, float]:
 def equity_metrics(bar_returns: pd.Series) -> tuple[dict[str, float], str]:
     """(metrics, backend). Tries vectorbt; falls back to numpy (same defs)."""
     try:
-        import vectorbt as vbt  # noqa: PLC0415 — heavy import, optional
+        import vectorbt as vbt
 
         acc = bar_returns.vbt.returns(freq="1h")
         return (
@@ -226,7 +227,7 @@ class BacktestEngine:
             "engine": "qn050-v1",
             "instrument": p.instrument,
             "timeframe": p.timeframe,
-            "bars": int(len(self._candles)),
+            "bars": len(self._candles),
             "window": {
                 "from": features["ts"].iloc[0].isoformat(),
                 "to": features["ts"].iloc[-1].isoformat(),
@@ -399,7 +400,7 @@ class BacktestEngine:
             "gap_excess_pips": float(sum(t.costs.gap_excess_pips for t in trades)),
         }
         return {
-            "n_trades": int(len(trades)),
+            "n_trades": len(trades),
             "hit_rate": float(wins.mean()) if len(rs) else math.nan,
             "expectancy_r": float(rs.mean()) if len(rs) else math.nan,
             "worst_r": float(rs.min()) if len(rs) else math.nan,

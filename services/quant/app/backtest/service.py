@@ -41,7 +41,9 @@ class BacktestRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-async def run_backtest_request(db: Any, registry: ModelRegistry, req: BacktestRequest) -> dict[str, Any]:
+async def run_backtest_request(
+    db: Any, registry: ModelRegistry, req: BacktestRequest
+) -> dict[str, Any]:
     """Load PIT frames + champion, run engine / validation / ablations."""
     # Enough lookback for warmup (60) + a healthy margin, bounded by window.
     span_hours = max((req.to_ts - req.from_ts).total_seconds() / 3600.0, 1.0)
@@ -55,7 +57,9 @@ async def run_backtest_request(db: Any, registry: ModelRegistry, req: BacktestRe
     candles = candles[candles["ts"] >= req.from_ts.replace(tzinfo=candles["ts"].iloc[0].tzinfo)]
     spreads = await db.fetch_spreads(req.instrument, req.to_ts, limit=50_000)
     macro = await db.fetch_macro(req.to_ts)
-    sentiment = await db.fetch_sentiment(req.instrument, req.to_ts, lookback_hours=int(span_hours) + 96)
+    sentiment = await db.fetch_sentiment(
+        req.instrument, req.to_ts, lookback_hours=int(span_hours) + 96
+    )
 
     champion = await registry.champion(req.instrument, req.timeframe)
     if champion is None:
@@ -63,9 +67,7 @@ async def run_backtest_request(db: Any, registry: ModelRegistry, req: BacktestRe
             f"no champion model for {req.instrument}/{req.timeframe} — train + promote first "
             "(PHASE2_TESTING_GUIDE §E); backtests without a champion are meaningless"
         )
-    proba_fn = champion_proba_fn(
-        champion.booster, champion.calibrator, champion.meta.feature_names
-    )
+    proba_fn = champion_proba_fn(champion.booster, champion.calibrator, champion.meta.feature_names)
 
     lp = champion.meta.label_params or {}
     params = BacktestParams(

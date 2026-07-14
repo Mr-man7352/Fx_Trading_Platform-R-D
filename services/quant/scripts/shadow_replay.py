@@ -68,9 +68,7 @@ async def _run(instrument: str, timeframe: str, target: int, window: int) -> int
     try:
         challenger = await registry.newest_challenger(instrument, timeframe)
         if challenger is None:
-            raise SystemExit(
-                f"no challenger for {instrument}/{timeframe}; run `train` first"
-            )
+            raise SystemExit(f"no challenger for {instrument}/{timeframe}; run `train` first")
         version = challenger.meta.version
 
         async with pool.acquire() as conn:

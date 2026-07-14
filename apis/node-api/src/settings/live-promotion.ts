@@ -23,10 +23,14 @@ export interface LivePromotionFacts {
   champion: { instrument: string; timeframe: string; version: number } | null;
   /** Latest FINISHED backtest run's validation verdict (QN-053). */
   latestValidationVerdict: string | null;
-  /** QN-060 90-day paper validation record — Phase 6; null until it exists. */
-  paperValidation: { verdict: string; at: Date } | null;
-  /** QN-061 signed risk report — Phase 6; null until it exists. */
-  signedRiskReport: { at: Date } | null;
+  /**
+   * QN-060 90-day paper validation record (BE-122 consumes it here).
+   * `underpowered` can never be true on a PASS (validator policy) but is
+   * carried so the checklist documents the powered comparison either way.
+   */
+  paperValidation: { verdict: string; at: Date; underpowered?: boolean } | null;
+  /** QN-061 signed risk report; sha256 shown in the checklist for audit. */
+  signedRiskReport: { at: Date; sha256?: string } | null;
   killSwitchActive: boolean;
 }
 
@@ -57,19 +61,26 @@ export function evaluateLivePromotion(facts: LivePromotionFacts): LivePromotionR
     },
     {
       id: 'paper_window_90d',
-      label: '90-day paper window beats shadow baseline net of LLM cost (QN-060)',
+      // BE-122 — the gate consumes QN-060's verdict; a failing (or missing,
+      // or underpowered) record blocks live. PASS already implies the
+      // powered comparison held (underpowered can never PASS).
+      label: '90-day paper window beats shadow baseline net of LLM cost (QN-060/BE-122)',
       ok: facts.paperValidation?.verdict === 'PASS',
       detail: facts.paperValidation
-        ? `verdict ${facts.paperValidation.verdict} at ${facts.paperValidation.at.toISOString()}`
-        : 'no QN-060 paper-validation record (validator lands in Phase 6)',
+        ? `verdict ${facts.paperValidation.verdict} at ${facts.paperValidation.at.toISOString()}` +
+          (facts.paperValidation.underpowered
+            ? ' — UNDERPOWERED sample (necessary-but-not-sufficient guard)'
+            : ' — powered comparison documented in paper_validation_runs.metrics')
+        : 'no QN-060 paper-validation record — POST /paper-validation/run on the quant service',
     },
     {
       id: 'signed_risk_report',
       label: 'Signed risk report generated (QN-061)',
       ok: facts.signedRiskReport !== null,
       detail: facts.signedRiskReport
-        ? `signed at ${facts.signedRiskReport.at.toISOString()}`
-        : 'no signed risk report (generator lands in Phase 6)',
+        ? `signed at ${facts.signedRiskReport.at.toISOString()}` +
+          (facts.signedRiskReport.sha256 ? ` (sha256 ${facts.signedRiskReport.sha256})` : '')
+        : 'no signed risk report — POST /risk-report/generate on the quant service',
     },
     {
       id: 'kill_switch_inactive',

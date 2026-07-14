@@ -80,7 +80,10 @@ jobs:
 
       - name: Sync quant deps (locked)
         working-directory: services/quant
-        run: uv sync --frozen
+        # --group vbt: linux wheels exist, so CI still exercises the real
+        # vectorbt metrics backend (Intel-mac dev machines use the numpy
+        # fallback — see pyproject [dependency-groups] vbt).
+        run: uv sync --frozen --group vbt
 
       - name: Lint (ruff)
         working-directory: services/quant

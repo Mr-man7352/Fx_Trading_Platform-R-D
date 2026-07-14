@@ -131,6 +131,9 @@ def stop_exit_slippage_pips(
     params: CostParams,
 ) -> tuple[float, bool]:
     """(slippage pips, flash_event) for a stop-side exit."""
-    flash = spread_pctile is not None and spread_pctile >= params.flash_pctile
+    # bool(...) — spread_pctile often arrives as a numpy float, and `>=` would
+    # propagate np.bool_ into TradeCosts.flash_event (callers compare with
+    # `is True`). Keep the seam a plain Python bool.
+    flash = bool(spread_pctile is not None and spread_pctile >= params.flash_pctile)
     mult = params.flash_slippage_mult if flash else 1.0
     return spread_pips_now * params.stop_slippage_frac * mult, flash

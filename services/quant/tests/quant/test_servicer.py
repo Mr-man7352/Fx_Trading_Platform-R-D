@@ -125,9 +125,7 @@ class TestSizePosition:
     async def test_sizes_with_db_rates_and_atr(
         self, servicer: QuantServicer, trending_db: FakeQuantDb
     ) -> None:
-        trending_db.candles[("GBP_USD", "M1")] = make_candles(
-            10, seed=3, price0=1.25, freq_hours=1
-        )
+        trending_db.candles[("GBP_USD", "M1")] = make_candles(10, seed=3, price0=1.25, freq_hours=1)
         trending_db.candles[(INSTRUMENT, "M1")] = make_candles(10, seed=4, price0=1.10)
         request = quant_pb2.SizePositionRequest(
             instrument=INSTRUMENT,
@@ -147,9 +145,7 @@ class TestSizePosition:
     async def test_rejects_zero_equity(self, servicer: QuantServicer) -> None:
         ctx = FakeContext()
         with pytest.raises(grpc.aio.AbortError):
-            await servicer.SizePosition(
-                quant_pb2.SizePositionRequest(instrument=INSTRUMENT), ctx
-            )
+            await servicer.SizePosition(quant_pb2.SizePositionRequest(instrument=INSTRUMENT), ctx)
         assert ctx.code == grpc.StatusCode.INVALID_ARGUMENT
 
 

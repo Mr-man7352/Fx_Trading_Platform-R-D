@@ -19,25 +19,46 @@ confirmation.
 
 ---
 
-## Current state (updated 2026-07-14)
+## Current state (updated 2026-07-14 — PHASE 6 CODE-COMPLETE)
 
-- **Phases 4 AND 5 are CODE-COMPLETE but runtime-UNPROVEN, uncommitted, and
-  NOT installed/migrated.** Nothing since Phase 3 (Step 3.3 = `c3b0051`) has
-  been committed, `pnpm install`ed, migrated, built, unit-tested, or drilled on
-  a real machine. **Before any Phase-6 work starts, the combined operator gate
-  must run:** the Phase-3/4 runtime gate ([`PHASE4_TESTING_GUIDE.md`](PHASE4_TESTING_GUIDE.md))
-  plus the Phase-5 gate ([`PHASE5_TESTING_GUIDE.md`](PHASE5_TESTING_GUIDE.md)
-  §A), then the §D–§L drills, finishing with the §L exit-criteria walkthrough
-  (sign-in → arm paper → observe debate → kill-switch from a phone, alerts
-  firing).
-- **Two migrations are PENDING** (generated, never hand-written; operator runs
-  them in `apis/node-api`): `step_5_1_auth` (RecoveryCode, InviteRedemption,
-  `User.twoFactorEnabledAt`, `InviteCode.revokedAt`) and
-  `step_5_3_settings_calendar` (`platform_settings`, `calendar_events`).
-  `npx prisma generate` is also unrun — node-api typecheck stays red until then.
-- **Commits owed once gates pass (user controls timing):** Phase 4
-  (`feat(lifecycle): …`), then Steps 5.1 → 5.4 + seam-closes per the suggested
-  sequence in [`PHASE5_TESTING_GUIDE.md`](PHASE5_TESTING_GUIDE.md) §5.
+- **All seven Phase-6 stories are BUILT** (Steps 6.1–6.5 below): QN-060
+  paper validator, BE-120 chaos suite, QN-062 decision replay (+ FE-060
+  transcript seam closed), QN-061 signed risk report, BE-122 paper gate,
+  BE-121 canary ramp + one-tap confirm, BE-132 GDPR export/erasure.
+- **UNIT GATE PASSED on the operator machine (2026-07-14, §A–§B of the
+  Phase-6 guide):** migration applied + client generated, node typecheck ✅,
+  vitest 401/401 (incl. chaos suite), quant pytest 291/291 + mypy strict +
+  ruff clean. Still **uncommitted**; still owed: **§C staging drills**, the
+  Phase-4+5 runtime drills ([`PHASE4_TESTING_GUIDE.md`](PHASE4_TESTING_GUIDE.md)
+  + [`PHASE5_TESTING_GUIDE.md`](PHASE5_TESTING_GUIDE.md) §A, §D–§L), and
+  [`PHASE6_TESTING_GUIDE.md`](PHASE6_TESTING_GUIDE.md) §D–§H at
+  paper-window end.
+- **Champion retrain (≥18 months H1) still OWED** — the 90-day paper window
+  (schedule-critical path for go-live) cannot meaningfully start against the
+  edgeless `XAU_USD/H1 v1`, and QN-060 will honestly answer UNDERPOWERED/
+  FAIL until there is a real window to judge.
+- **New env keys** (in `.env.example`, check-env green): canary trio
+  (`CANARY_CONFIRM_FIRST_N/MAX_UNITS/CONFIRM_TTL_MIN`) +
+  `REPORT_SIGNING_KEY` (QN-061 refuses to generate unsigned).
+- **vectorbt moved to optional `vbt` dependency group** (2026-07-14 gate
+  finding): llvmlite 0.48 ships no Intel-mac wheels, so default `uv sync`
+  broke on the dev Mac trying an sdist build (cmake+LLVM). The QN-050 engine
+  already has an identical numpy metrics fallback (`metrics_backend`
+  recorded per report); CI keeps the real backend via
+  `uv sync --frozen --group vbt` (linux wheels exist). Operator re-locks:
+  `uv lock` (generated file — never hand-edited).
+- **Verified in the build sandbox** (no install/DB possible there): all
+  Python `py_compile`; ZIP writer executed and round-tripped through Python
+  `zipfile` (CRCs green); BE-101/122 checklist logic executed (PASS allows,
+  FAIL/EXTEND/UNDERPOWERED/no-report block); report sign/verify/tamper/
+  wrong-key/XSS-escape executed green. Everything else is §A–§H of the
+  Phase-6 guide.
+- **Remaining Phase-5 seams NOT in Phase-6 scope** (unchanged): health-strip
+  breaker Redis mirror, broker equity sync (must be real before live),
+  richer trade record over REST, Python reading `platform_settings` knobs.
+- **Next:** operator runs PHASE6 guide §A–§C now (install → migrate → unit +
+  chaos gates), retrains the champion, starts the paper window; §D–§H happen
+  at window end → live promotion via the canary ramp.
 - **Carried-forward known issue (from Phase 2):** the only trained model
   `XAU_USD/H1 v1` has **no predictive edge** (OOF AUC 0.51, ~6 months / 2,121
   candidates) — a plumbing/smoke artifact only. **Retrain on ≥18 months H1**
@@ -177,6 +198,260 @@ second invited user.
 ## Entries
 
 <!-- Append Phase 6 step entries below, newest first. -->
+
+### 2026-07-14 — Phase-6 unit gate PASSED on the operator machine (§A–§B)
+
+- **Results:** node-api `prisma migrate dev` + `generate` ✅, typecheck ✅,
+  vitest **401/401** (incl. the 13-case chaos suite); quant `uv sync` ✅,
+  pytest **291/291**, `mypy --strict` clean (130 files), `ruff check` clean.
+  This is the FIRST full runtime verification of anything since Phase 3.
+- **Gate findings fixed along the way (all now green):**
+  - `routes/gdpr.ts`: Prisma 7 `Bytes` wants `Uint8Array` (copy out of the
+    Buffer); binary download route must declare NO response schemas (JSON
+    serializer would eat the ZIP).
+  - `gdpr.test.ts`: my over-broad assert — the export README legitimately
+    *mentions* "ciphertexts" while excluding them; tightened to the quoted
+    JSON-key form.
+  - **Pre-existing Phase-4 defects surfaced by the first real run:**
+    `app/backtest/costs.py` leaked `np.bool_` into
+    `TradeCosts.flash_event` (now a plain bool at the seam);
+    `tests/backtest/test_engine.py` `params()` used an untyped dict splat
+    (now `dataclasses.replace`); `ablation.py` missing return annotation +
+    `report` shadowing; long-line/noqa hygiene in `pit.py`/`service.py`/
+    `routes_backtest.py` (pit guard also made readable).
+  - Phase-6 strict-mode nits: `TrendRegime` enum in the replay test, two
+    `Any` returns pinned in `routes_validation.py`/`routes_report.py`,
+    ASCII-fied the power-formula docstring, E501 wraps.
+  - **vectorbt → optional `vbt` group** (see Current state) — llvmlite has
+    no Intel-mac wheels; numpy metrics fallback is the dev-Mac path, CI
+    keeps the real backend.
+- Known cosmetic noise: OTel exporter retry spam after pytest when the local
+  `.env` sets `OTEL_EXPORTER_OTLP_ENDPOINT` without Tempo running — comment
+  the key out locally or ignore; tracing is a no-op when unset.
+- **Remaining before go-live:** guide §C staging drills, champion retrain,
+  paper window → §D–§H.
+
+### 2026-07-14 — Step 6.5: GDPR export + erasure (BE-132)
+
+- **`src/gdpr/zip.ts`** — dependency-free store-only ZIP writer (PKWARE
+  subset: local headers + central directory + EOCD, CRC-32, UTF-8 names).
+  Byte-deterministic for a given input; readable by every unzip tool. Chosen
+  over adding `archiver`/`jszip` — the bundle is a handful of small JSON
+  files for one user.
+- **`src/gdpr/gdpr-service.ts`** — export scope + retention policy in ONE
+  place. Export bundles `user.json`, `trades.json`,
+  `security_metadata.json` (**metadata only** — password/recovery hashes,
+  sealed TOTP secrets, and broker-credential ciphertexts NEVER leave),
+  `invites.json`, `audit_log.json` (actor rows), and a README stating scope
+  + retention. Erasure = anonymise-in-place: deletes recovery codes, email
+  tokens, broker credentials, pending exports; clears email (tombstone
+  `erased+<id>@anonymised.invalid`), name/image/googleId/passwordHash/
+  totpSecret; sets status `suspended` + new `User.erasedAt`. **Retained:**
+  trades (Art. 17(3)(b) financial records, user FK spine kept) and the
+  append-only `audit_log` (BE-130's DB trigger forbids UPDATE/DELETE by
+  design — documented, not fought).
+- **`src/routes/gdpr.ts`** (+ app.ts `BuildAppOptions.gdpr`) —
+  `POST /gdpr/export` (auth): ZIP stored in-row in new `gdpr_exports` behind
+  a 256-bit capability token, **7-day link emailed** via the existing
+  mock-first Resend seam (link also in the response body so the no-API-key
+  dev path stays usable); `GET /gdpr/exports/:token` (public capability
+  route, `config.public` like verify/reset): streams the ZIP, **410 Gone +
+  row delete after expiry**; `POST /gdpr/erasure` (**step-up 2FA required**
+  + `confirmEmail` must repeat the account email verbatim): anonymises and
+  audits the full summary before the JWT dies with the old email.
+- **Schema:** new `GdprExport` model + `User.erasedAt` — folded into the
+  owed Phase-6 migration run.
+- Verified: 9 vitest cases (`gdpr/gdpr.test.ts` — ZIP structure/EOCD/CRC
+  incl. the IEEE `123456789` vector, byte-determinism, export scope with
+  secret-exclusion asserts, erasure retention policy) + 5 route cases
+  (`routes/gdpr.test.ts` — export+email+download lifecycle, 401/404/410,
+  step-up 403, confirmation 400, erasure 200 + audit). **NOT verified
+  (operator):** vitest run, migration, a real emailed link via Resend.
+
+### 2026-07-14 — Step 6.4: Promotion chain — QN-061 + BE-122 + BE-121
+
+- **QN-061 signed risk report (Python):**
+  `services/quant/app/quant/risk_report.py` — deterministic, self-contained
+  HTML (metrics net of LLM cost, powered-comparison table, champion registry
+  provenance, `platform_settings` + quant-config snapshot, verbatim
+  disclaimer; all values HTML-escaped). `sign_report` = SHA-256 +
+  HMAC-SHA256(`REPORT_SIGNING_KEY`), `verify_report` for the audit side.
+  `routes_report.py`: `POST /risk-report/generate` **refuses without a
+  signing key (503)** and **refuses unless the latest QN-060 verdict is PASS
+  (409)** — a report documents evidence, it never invents it; `GET
+  /risk-report/latest[?includeHtml=true]`. New `risk_reports` table stores
+  content WITH hash+signature (self-contained audit trail, no filesystem
+  dependency). New quant setting `report_signing_key`.
+- **BE-122 paper gate (Node):** `live-promotion.ts` facts now carry
+  `paperValidation.underpowered` + `signedRiskReport.sha256`;
+  `paper_window_90d` detail documents the powered comparison (or the
+  UNDERPOWERED guard), `signed_risk_report` detail shows the report hash.
+  `routes/settings.ts` `gatherFacts` reads both `paper_validation_runs` and
+  `risk_reports` latest rows — the checklist now flips on REAL evidence only.
+- **BE-121 canary ramp + human confirm (Node):**
+  - `signals-worker.ts` — in live mode, while `count(trades where
+    trading_mode='live') < CANARY_CONFIRM_FIRST_N`: units clamped to
+    `CANARY_MAX_UNITS`, intent created **`pending`** with a
+    `riskGate.canary` block (requested vs clamped units), execution NOT
+    enqueued, CRITICAL alert (`canary.confirm_required` ⇒ Telegram+SMS
+    path) + `signal:canary_confirm_required` WS event; new cycle outcome
+    `canary_pending`. Paper/backtest modes never consult the counter.
+  - `routes/trades.ts` — `POST /api/trades/intents/:id/confirm` (one-tap):
+    approves + enqueues `execute-intent`; **410 + auto-cancel after
+    `CANARY_CONFIRM_TTL_MIN`** (a stale confirm executes into a different
+    market); 409 for non-pending or **non-canary intents (no force-execute
+    backdoor)**; `/reject` cancels with `CANARY_REJECTED`. Audited via
+    `worker-audit`; WS fan-out when Redis wired.
+  - `server.ts` now owns an execution-queue producer; `app.ts` gains
+    `BuildAppOptions.trades`. New env: `CANARY_CONFIRM_FIRST_N` (10),
+    `CANARY_MAX_UNITS` (1000), `CANARY_CONFIRM_TTL_MIN` (15) — in
+    `.env.example` (check-env green, 78 keys) alongside
+    `REPORT_SIGNING_KEY`.
+- **Migration OWED (operator, with 6.1's):** `npx prisma migrate dev --name
+  step_6_4_risk_reports && npx prisma generate` (or fold both new tables into
+  one migrate run — operator's call).
+- Verified: `py_compile` clean; `node scripts/check-env.mjs --ci` ✅; tests
+  written — 8 pytest (`test_risk_report.py`: sign/verify roundtrip, tamper +
+  wrong-key rejection, byte-identical determinism, content completeness,
+  no-champion honesty, XSS escaping), 3 canary worker cases
+  (`signals-worker.test.ts`: ramp parks pending+clamped+alerted, ramp ends
+  at N, paper mode never engages), 6 route cases (`trades.test.ts`: 503 no
+  queue, confirm happy path, TTL 410 + cancel, non-canary 409, decided 409 /
+  unknown 404, reject), 3 BE-122/QN-061 checklist cases
+  (`live-promotion.test.ts`). **NOT verified (operator):** pytest/vitest/
+  typecheck runs (prisma generate owed), live `POST /risk-report/generate`
+  against a real PASS row.
+
+### 2026-07-14 — Step 6.3: Decision replay from provenance (QN-062 + FE-060 seam)
+
+- **Two-leg split** (decision): the **agent leg** is pure provenance read on
+  the Node side — `agent_runs.output` IS the LLM cache (cached-mode AC), no
+  model is ever re-invoked; the **quant leg** is a side-effect-free
+  point-in-time pipeline re-run on the Python side. Node composes both.
+- **`services/quant/app/quant/pipeline.py`** — `run(..., persist=False)`
+  skips ALL writes (baseline row, features upsert, cluster refresh): same
+  computation, zero side effects, so a replay can never contaminate the
+  provenance it is checking. Default unchanged (`persist=True`).
+- **`services/quant/app/quant/replay.py`** — tolerance-based comparison
+  (jsonb float round-trip safe), missing/extra feature keys reported
+  explicitly, candidate geometry vs stored, and **model-version honesty**:
+  a registry change since the original run marks probability "not judged"
+  instead of reporting fake drift. Known **schema gap surfaced in the
+  report**: `signals` doesn't persist the candidate's `model_version`, so
+  the probability comparison is against the CURRENT champion (note emitted).
+- **`services/quant/app/routes_replay.py`** (+ `main.py` include) —
+  `POST /replay/quant`: re-run + compare; 422 on insufficient point-in-time
+  data, 503 without a DB.
+- **`apis/node-api/src/routes/signals.ts`** — `GET /signals/:id/replay`
+  (closes the FE-060 full-transcript seam): complete bull/bear/judge debate
+  transcript, every `agent_runs` row with provider/model/tier/downgrade
+  provenance + parsed output, and the **exact §9.5 memory context resolved
+  from `retrieved_memory_ids`** (BE-064 — the QN-062 AC); evicted memories
+  come back as explicit tombstones, never dropped. Quant leg proxied to
+  `POST {QUANT_HTTP_URL}/replay/quant`; unreachable ⇒ `quant.available:
+  false` + reason, transcript still serves (honest seam). New
+  `BuildAppOptions.signals.fetchImpl` test seam (app.ts).
+- **`packages/types/src/agents.ts`** — Replay contracts (Node-internal, NOT
+  in `contractSchemas` per the registry convention — no codegen churn).
+- Verified: `py_compile` clean; 11 pytest cases
+  (`tests/quant/test_replay.py` — tolerance, drift, key diffs, version
+  honesty, persist=False writes-nothing with persist=True control) + 3 route
+  tests appended to `routes/signals.test.ts` (404, full replay incl.
+  tombstone + proxy body, quant-down honesty). **NOT verified (operator):**
+  `uv run pytest tests/quant/test_replay.py`, node vitest/typecheck (needs
+  `prisma generate` from Step 6.1), and a live replay against real rows.
+
+### 2026-07-14 — Step 6.2: Chaos test suite (BE-120)
+
+- **`apis/node-api/src/chaos/chaos.test.ts`** — one repeatable suite
+  (`pnpm --filter @fx/node-api test -- chaos`) composing the REAL components
+  (AgentGraph, CircuitBreaker, QuantPipelineClient, KillSwitchStore, the
+  `@fx/risk-gate` engine, the full BE-066 cycle) with injected faults.
+  Scenarios map 1:1 to the story ACs:
+  - **S1** Redis flushed while kill-switch active → `isActive()` re-hydrates
+    ACTIVE from Postgres (cache repopulated, never silently cleared), cycle
+    HOLDs `halted` with ZERO LLM calls; a second flush after deactivation
+    stays released — flush alone never flips the switch either way.
+  - **S2** OANDA disconnect (sticky `execution:halt`) → every instrument
+    HOLDs, zero LLM spend.
+  - **S3** LLM total outage, both flavours (all providers **rejecting** and
+    all providers **hanging**) → deterministic `pm_hold` inside the graph
+    budget, degradation notes persisted (partial-transcript contract), no
+    hung jobs — asserted by wall-clock bound.
+  - **S4** quant gRPC outage → 3 transport failures OPEN the §2.2 breaker;
+    while open, ALL instruments HOLD `CIRCUIT_OPEN` with **no connection
+    attempted** (stub call-count pinned); after 60 s (injected clock) the
+    HALF-OPEN probe against a healed service re-closes; a failed probe
+    restarts the full cooldown instead of resuming traffic.
+  - **S5** flash crash (20 pips ≥ 5× EUR_USD 3-pip cap) → `FLASH_SPREAD`
+    veto, `HALT_NEW_ENTRIES` flag audited, **critical alert** on the
+    notifications queue (Telegram+SMS fan-out surface); control case shows
+    normal spread doesn't trip it.
+  - **S6** daily P&L −6% → `DAILY_DD_HALT` veto.
+  - **S7** weekend gap: QN-047 `weekend_gap_window` + LOW liquidity + flatten
+    armed → `WEEKEND_GAP_WINDOW` veto and `WEEKEND_GAP_FLATTEN` flag naming
+    every open position; flatten-disabled control is advisory only.
+  - **S8** worst case: ALL 6 instruments candidate at the same bar close +
+    forced 2 debate rounds + one degraded provider (every-5th LLM call slow +
+    failed-over), semaphore 3 → every job `executed`, per-job `e2eMs`
+    (clock at **semaphore acquisition**, §2.2) within budget, wait queue
+    served strictly most-liquid-first (probed subclass records grant order)
+    — no starved instrument.
+- Budgets are ms-scaled; code paths/policies are production. The **<180 s
+  wall-clock bound with real budgets is a staging drill**, to be scripted in
+  PHASE6_TESTING_GUIDE (end of phase) — the suite deliberately asserts the
+  same invariants at test scale rather than faking a 3-minute test.
+- Verified: nothing runtime — sandbox has no node_modules/venv. **Operator:**
+  `pnpm --filter @fx/node-api test -- chaos` (after `prisma generate`;
+  Vitest, no DB/Redis needed — suite is self-contained fakes).
+
+### 2026-07-14 — Step 6.1: 90-day paper vs baseline validator (QN-060)
+
+- **`services/quant/app/quant/paper_validation.py`** — the validator. Pure
+  logic (unit-testable, no DB): agent leg = realized R per closed paper trade
+  (net P&L / units×|entry−stop|; un-normalisable trades skipped + warned,
+  never guessed); LLM window spend converted to R via mean per-trade risk and
+  deducted (**net of LLM cost** AC); baseline leg = stored `baseline_signals`
+  candidates re-resolved through the QN-043 bracket sim (`label_outcomes`,
+  win ⇒ +rr·R, loss ⇒ −1R; unresolved tails dropped). Verdict precedence:
+  **EXTEND** (§9.4: downgraded share >10% ⇒ window must extend) →
+  **UNDERPOWERED** (two-sample normal-approx power calc vs the
+  **pre-registered** `effect_size_r=0.10R`, α=0.05, power=0.8 —
+  necessary-but-not-sufficient guard, can never PASS) → **PASS/FAIL**
+  (agent net mean R − baseline mean R ≥ effect size).
+- **`apis/node-api/prisma/schema.prisma`** — new `PaperValidationRun` model →
+  `paper_validation_runs` (append-only; latest row authoritative; verdict
+  String PASS|FAIL|EXTEND|UNDERPOWERED, downgraded_share, effect_size_r,
+  metrics jsonb). **Migration is OWED (operator):** `cd apis/node-api && npx
+  prisma migrate dev --name step_6_1_paper_validation && npx prisma generate`
+  — node-api typecheck stays red until generate runs (same as Phase 5).
+- **`services/quant/app/quant/dbio.py`** — window-bounded reads (closed paper
+  trades joined to intents for stop fallback, `SUM(cost_usd)` over
+  `agent_runs`, downgraded share as `BOOL_OR(model_downgraded)` per paper
+  signal cycle, `would_trade` baseline rows) + verdict insert +
+  `latest_paper_validation` — all behind the QuantDb seam
+  (`PaperValidationDb` protocol keeps the validator fakeable).
+- **`services/quant/app/routes_validation.py`** (+ `main.py` include) —
+  `POST /paper-validation/run` (body = the pre-registered plan; overrides are
+  persisted into the metrics row) and `GET /paper-validation/latest` (404
+  before first run). Shares QuantRuntime with routes_backtest.
+- **`apis/node-api/src/routes/settings.ts`** — `gatherFacts` now reads the
+  latest `paper_validation_runs` row; BE-101's `paper_window_90d` checklist
+  item flips only on a stored `PASS` (was hard-coded null). `signed_risk_report`
+  stays fail-safe null until QN-061 (Step 6.4).
+- Decisions: comparison in R-multiples (risk-normalised, instrument-agnostic);
+  quote-ccy risk approximation documented in the module docstring; candles
+  fetched to `now` so post-window bars resolve late brackets (resolution only,
+  no selection); verdict values uppercase to match QN-053's `VALIDATED` style.
+- Verified: `py_compile` on all touched Python; 15 pytest cases written
+  (`tests/quant/test_paper_validation.py` — R-normalisation incl. swap/
+  commission netting, cost-deduction flips PASS→FAIL, §9.4 EXTEND precedence,
+  underpowered guard, bracket-sim resolution on a synthetic uptrend, fake-db
+  orchestration + persist flag). **NOT verified (operator, sandbox has no
+  venv/DB):** `uv run pytest tests/quant/test_paper_validation.py`,
+  `uv run mypy`, `uv run ruff check`, the owed migration + `prisma generate`,
+  `pnpm --filter @fx/node-api typecheck`, and a live `POST
+  /paper-validation/run` against real paper data.
 
 ---
 

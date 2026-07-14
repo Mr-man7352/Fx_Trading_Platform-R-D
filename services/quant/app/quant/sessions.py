@@ -151,9 +151,7 @@ def in_weekend_gap_window(ts: datetime, *, window_hours: float = 6.0) -> bool:
     return close - timedelta(hours=window_hours) <= local < close
 
 
-def weekend_gap_risk(
-    ts: datetime, *, high_vol_regime: bool, window_hours: float = 6.0
-) -> GapRisk:
+def weekend_gap_risk(ts: datetime, *, high_vol_regime: bool, window_hours: float = 6.0) -> GapRisk:
     """`HIGH` inside the Friday pre-close window during a high-vol regime —
     the flag the risk gate uses for the optional pre-weekend flatten (§10)."""
     if high_vol_regime and in_weekend_gap_window(ts, window_hours=window_hours):
