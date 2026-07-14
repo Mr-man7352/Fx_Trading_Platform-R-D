@@ -12,10 +12,12 @@ import {
 import { type ConnectionOptions, type Job, Queue, type Telemetry, Worker } from 'bullmq';
 import { BullMQOtel } from 'bullmq-otel';
 import { Redis } from 'ioredis';
+import { startCalendarProvider } from '../calendar/calendar-service.js';
 import { createPrismaClient, type PrismaClient } from '../db.js';
 import type { Env } from '../env.js';
 import { type KillSwitchDb, KillSwitchStore } from '../execution/kill-switch.js';
 import { MarketRepo } from '../market/repo.js';
+import { CachedSettingsReader, SettingsService } from '../settings/settings-service.js';
 import { DbAccountStateProvider } from '../signals/account-state.js';
 import { AgentGraph, H1_BUDGETS } from '../signals/agent-graph.js';
 import { AgentMemoryStore } from '../signals/agent-memory.js';
@@ -125,15 +127,22 @@ export function startSignalsWorker(env: Env): SignalsWorkerHandle {
     console.warn('[signals] kill-switch boot hydration failed (will retry on cache miss):', err);
   });
 
+  // BE-100 — TTL-cached effective settings ("next cycle uses new values").
+  const settings = new CachedSettingsReader(new SettingsService(prisma), env.SETTINGS_CACHE_TTL_MS);
+  // BE-110 — DB-backed calendar provider (closes the Phase-3 seam; fail-open).
+  const calendar = startCalendarProvider(prisma, env);
+
   const deps: SignalsWorkerDeps = {
     prisma,
     redis: connection,
     pipeline,
     assembler,
     graph,
-    // BE-070/071 — the real deterministic rule engine (final authority, §10).
-    riskGate: new DeterministicRiskGate(prisma, killSwitch, env),
+    // BE-070/071 — the real deterministic rule engine (final authority, §10),
+    // now with the BE-110 calendar (econ blackout) + BE-100 settings overlay.
+    riskGate: new DeterministicRiskGate(prisma, killSwitch, env, calendar.provider, settings),
     killSwitch,
+    settings,
     account: new DbAccountStateProvider(prisma, env.ACCOUNT_BASELINE_EQUITY),
     memory,
     executionQueue: new Queue(EXECUTION_QUEUE, { connection: bullConnection, telemetry }),
@@ -172,6 +181,7 @@ export function startSignalsWorker(env: Env): SignalsWorkerHandle {
     worker,
     async close() {
       clearInterval(sweepTimer);
+      calendar.stop();
       await worker.close();
       await deps.executionQueue.close();
       await deps.notificationsQueue.close();

@@ -10,6 +10,7 @@ import { loadEnv } from '../env.js';
 import { touchExecutionHeartbeat } from '../execution/halt.js';
 import { type KillSwitchDb, KillSwitchStore } from '../execution/kill-switch.js';
 import { QuantExecutionClient } from '../execution/quant-client.js';
+import { DIGEST_CRONS, DIGESTS_QUEUE, type DigestJob, processDigestJob } from './digests.js';
 import { processExecutionJob } from './execution.js';
 import { processNotificationJob } from './notifications.js';
 import {
@@ -103,10 +104,21 @@ const reconciliationWorker = new Worker(
   { connection: bullConnection, concurrency: 1, telemetry },
 );
 
+// BE-115/118 — Telegram every severity; Twilio SMS escalation on critical;
+// failures surface on the `notifications` WS channel (never a job throw).
 const notificationsWorker = new Worker<NotificationJob>(
   NOTIFICATIONS_QUEUE,
-  async (job) => processNotificationJob(job, env),
+  async (job) => {
+    await processNotificationJob(job, { env, redis: connection });
+  },
   { connection: bullConnection, concurrency: 4, telemetry },
+);
+
+// BE-116 — daily (22:00 UTC) + weekly (Sun 22:00 UTC) email digests.
+const digestsWorker = new Worker<DigestJob>(
+  DIGESTS_QUEUE,
+  async (job) => processDigestJob(job, { prisma, env }),
+  { connection: bullConnection, concurrency: 1, telemetry },
 );
 
 // Repeatable schedules (BE-051: 30s, BE-052: 60s)
@@ -124,6 +136,16 @@ await reconciliationQueue.add(
   { repeat: { every: 60_000 }, jobId: 'reconciliation-tick' },
 );
 
+// BE-116 — digest crons (22:00 UTC daily; Sun 22:00 UTC weekly).
+const digestsQueue = new Queue<DigestJob>(DIGESTS_QUEUE, { connection: bullConnection, telemetry });
+for (const cron of DIGEST_CRONS) {
+  await digestsQueue.add(
+    cron.kind,
+    { kind: cron.kind },
+    { repeat: { pattern: cron.pattern, tz: 'UTC' }, jobId: cron.jobId },
+  );
+}
+
 console.log(`@fx/node-api execution worker up (mode=${env.TRADING_MODE})`);
 
 let shuttingDown = false;
@@ -132,10 +154,12 @@ const closeAll = async () => {
   await tradeManagerWorker.close();
   await reconciliationWorker.close();
   await notificationsWorker.close();
+  await digestsWorker.close();
   await supervisionQueue.close();
   await notificationsQueue.close();
   await tradeManagerQueue.close();
   await reconciliationQueue.close();
+  await digestsQueue.close();
   connection.disconnect();
   await prisma.$disconnect();
 };

@@ -2,12 +2,9 @@
 
 import type { BacktestRun } from '@fx/types';
 import { Badge, Card, CardContent, CardHeader, CardTitle, cn } from '@fx/ui';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
-import { toast } from 'sonner';
+import { useState } from 'react';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/states';
 import { useBacktest, useBacktests } from '@/lib/hooks';
-import { useWs } from '@/lib/use-ws';
 import { BacktestForm } from './backtest-form';
 
 const STATUS_TONE: Record<string, string> = {
@@ -33,20 +30,8 @@ function pickMetric(metrics: Record<string, unknown> | null, keys: string[]): st
 export function BacktestView() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const backtests = useBacktests({ limit: 25 });
-  const qc = useQueryClient();
-
-  const onEvent = useCallback(
-    (channel: string, payload: unknown) => {
-      if (channel !== 'backtests') return;
-      qc.invalidateQueries({ queryKey: ['backtests'] });
-      qc.invalidateQueries({ queryKey: ['backtest'] });
-      const p = payload as { type?: string; id?: string } | undefined;
-      if (p?.type?.includes('finished')) toast.success('Backtest finished', { description: p.id });
-      if (p?.type?.includes('failed')) toast.error('Backtest failed', { description: p.id });
-    },
-    [qc],
-  );
-  useWs({ channels: ['backtests'], onEvent });
+  // Realtime (`backtests` channel → invalidation + finished/failed toasts) is
+  // owned by the layout-level RealtimeProvider (FE-120) — no page socket.
 
   const runs = backtests.data?.backtests ?? [];
 

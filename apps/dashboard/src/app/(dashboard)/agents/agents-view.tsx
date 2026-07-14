@@ -2,42 +2,29 @@
 
 import type { SignalSummary } from '@fx/types';
 import { Badge, Card, CardContent, CardHeader, CardTitle, cn } from '@fx/ui';
-import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useState } from 'react';
-import { toast } from 'sonner';
+import { useState } from 'react';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/states';
 import { useSignals } from '@/lib/hooks';
-import { useWs } from '@/lib/use-ws';
+import { useConnection } from '@/stores/connection';
 
 /**
  * FE-060 — live agent debate viewer. Signals stream over the `signals` WS
- * channel (BE-067); the list + selected-signal detail read the agent-cycle
- * summary (roles that ran, LLM calls, cost, debate turns, downgrade flag). A
- * zero-cost `gate_skip` bar is shown explicitly. The FULL per-role transcript +
- * retrieved memories (§9.5) need the per-signal provenance read that replays
- * `agent_runs` — that endpoint is the remaining seam; the summary is what
- * BE-067 exposes today.
+ * channel (BE-067) — subscription, cache invalidation, and toasts are owned by
+ * the layout-level RealtimeProvider (FE-120); this page reads the shared
+ * connection status for its badge. The list + selected-signal detail read the
+ * agent-cycle summary (roles that ran, LLM calls, cost, debate turns,
+ * downgrade flag). A zero-cost `gate_skip` bar is shown explicitly. The FULL
+ * per-role transcript + retrieved memories (§9.5) need the per-signal
+ * provenance read that replays `agent_runs` — that endpoint is the remaining
+ * seam; the summary is what BE-067 exposes today.
  */
 export function AgentsView() {
   const params = useSearchParams();
   const preselect = params.get('signal');
   const signals = useSignals({ limit: 50 });
   const [selectedId, setSelectedId] = useState<string | null>(preselect);
-  const qc = useQueryClient();
-
-  const onEvent = useCallback(
-    (channel: string, payload: unknown) => {
-      if (channel !== 'signals') return;
-      qc.invalidateQueries({ queryKey: ['signals'] });
-      const p = payload as { instrument?: string; type?: string } | undefined;
-      if (p?.instrument) {
-        toast.message('New agent cycle', { description: `${p.instrument} ${p.type ?? ''}`.trim() });
-      }
-    },
-    [qc],
-  );
-  const wsStatus = useWs({ channels: ['signals'], onEvent });
+  const wsStatus = useConnection((s) => s.status);
 
   const list = signals.data?.signals ?? [];
   const selected = list.find((s) => s.id === selectedId) ?? list[0] ?? null;

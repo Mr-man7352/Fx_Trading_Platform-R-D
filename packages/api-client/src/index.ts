@@ -1,9 +1,13 @@
 import type {
   AuditLogQuery,
   BacktestConfig,
+  BrokerCredentialsWrite,
+  CalendarQuery,
   KillSwitchRequest,
+  LivePromotionResponse,
   MarketCandlesQuery,
   NewsQuery,
+  SettingsPatch,
   SignalsQuery,
 } from '@fx/types';
 import {
@@ -12,11 +16,18 @@ import {
   BacktestCreateResponseSchema,
   BacktestListResponseSchema,
   BacktestRunSchema,
+  BrokerCredentialsWriteResponseSchema,
+  CalendarResponseSchema,
   HealthResponseSchema,
   KillSwitchResponseSchema,
+  LivePromotionResponseSchema,
   MarketCandlesResponseSchema,
   MarketInstrumentsResponseSchema,
   NewsPageSchema,
+  QuantCalibrationResponseSchema,
+  QuantModelsResponseSchema,
+  QuantRegimeResponseSchema,
+  SettingsResponseSchema,
   SignalsResponseSchema,
   STEP_UP_2FA_REQUIRED,
   TradesListResponseSchema,
@@ -150,6 +161,77 @@ export function createApiClient(options: ApiClientOptions) {
           method: 'POST',
           body: JSON.stringify(body),
         }),
+    },
+    // BE-100 — settings CRUD (FE-100). Bounds enforced server-side.
+    settings: {
+      get: () => request(SettingsResponseSchema, '/settings'),
+      patch: (body: SettingsPatch) =>
+        request(SettingsResponseSchema, '/settings', {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        }),
+      putBrokerCredentials: (body: BrokerCredentialsWrite) =>
+        request(BrokerCredentialsWriteResponseSchema, '/settings/broker-credentials', {
+          method: 'PUT',
+          body: JSON.stringify(body),
+        }),
+    },
+    // BE-101 — live-promotion gate. POST answers 403 WITH the checklist body
+    // (not an ApiError), so it gets a dedicated parse path here.
+    livePromotion: {
+      get: () => request(LivePromotionResponseSchema, '/settings/live-promotion'),
+      post: async (): Promise<LivePromotionResponse> => {
+        const token = await options.getToken?.();
+        const res = await fetchImpl(`${options.baseUrl}/settings/live-promotion`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          },
+        });
+        if (res.ok || res.status === 403) {
+          const raw: unknown = await res.json();
+          const parsed = LivePromotionResponseSchema.safeParse(raw);
+          if (parsed.success) return parsed.data; // allowed:false carries the checklist
+          // Not a checklist body — fall through to ApiError handling
+          // (e.g. 403 STEP_UP_2FA_REQUIRED from the guard).
+          const errBody = ApiErrorSchema.safeParse(raw);
+          if (errBody.success) {
+            if (res.status === 403 && errBody.data.error.code === STEP_UP_2FA_REQUIRED) {
+              options.onStepUpRequired?.();
+            }
+            throw new ApiClientError(
+              res.status,
+              errBody.data.error.code,
+              errBody.data.error.message,
+              errBody.data.error.requestId,
+            );
+          }
+          throw new ApiClientError(res.status, 'UNKNOWN', `HTTP ${res.status}`);
+        }
+        const error = await parseError(res);
+        if (res.status === 401) options.onUnauthorized?.();
+        throw error;
+      },
+    },
+    // BE-110 — economic calendar (FE-101).
+    calendar: {
+      list: (q: Partial<CalendarQuery> = {}) =>
+        request(CalendarResponseSchema, `/calendar${queryString(q)}`),
+    },
+    // QN-055 via the Node proxy — quant analytics (FE-090).
+    quant: {
+      models: () => request(QuantModelsResponseSchema, '/quant/models'),
+      calibration: (instrument: string, timeframe: string, version: number) =>
+        request(
+          QuantCalibrationResponseSchema,
+          `/quant/models/${encodeURIComponent(instrument)}/${encodeURIComponent(timeframe)}/${version}/calibration`,
+        ),
+      regime: (instrument: string, q: { timeframe?: string; bars?: number } = {}) =>
+        request(
+          QuantRegimeResponseSchema,
+          `/quant/regime/${encodeURIComponent(instrument)}${queryString(q)}`,
+        ),
     },
   };
 }

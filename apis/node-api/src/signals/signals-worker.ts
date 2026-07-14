@@ -5,6 +5,7 @@ import type { PrismaClient } from '../db.js';
 import type { Env } from '../env.js';
 import { isExecutionHalted } from '../execution/halt.js';
 import type { KillSwitchStore } from '../execution/kill-switch.js';
+import type { SettingsReader } from '../settings/settings-service.js';
 import type { ExecutionJob, NotificationJob, SignalJob } from '../workers/queues.js';
 import { writeWorkerAudit } from '../workers/worker-audit.js';
 import { publishWsEvent } from '../workers/ws-publish.js';
@@ -110,6 +111,11 @@ export interface SignalsWorkerDeps {
    * re-hydrate from Postgres, never silently resume trading.
    */
   killSwitch: KillSwitchStore | null;
+  /**
+   * BE-100 — effective operator settings (TTL-cached). Optional: without it
+   * the env/compiled defaults apply (legacy tests, ablation runs).
+   */
+  settings?: SettingsReader | null;
   account: AccountStateProvider;
   /** null ⇒ memory disabled (ablation) — reflections are not written. */
   memory: AgentMemoryStore | null;
@@ -237,15 +243,21 @@ export async function processSignalJob(
   }
   const result = pipelineOutcome.result;
 
-  // 2 — ADR-010 entry gate: zero LLM cost below the bar.
+  // 2 — ADR-010 entry gate: zero LLM cost below the bar. The pre-filter P is
+  // operator-tunable via BE-100 (`entryGatePreFilter`, next-cycle pickup);
+  // compiled default stays 0.50 (the 0.50–0.60 veto-cohort band, BE-065).
+  const effectiveSettings = (await deps.settings?.effective()) ?? null;
+  const gateMinProbability =
+    effectiveSettings?.risk.entryGatePreFilter ?? ENTRY_GATE_MIN_PROBABILITY;
   if (
     !result.hasCandidate ||
     result.candidate === null ||
-    result.candidate.probability < ENTRY_GATE_MIN_PROBABILITY
+    result.candidate.probability < gateMinProbability
   ) {
     await audit(deps, 'signal_cycle_gate_skip', cycleId, {
       hasCandidate: result.hasCandidate,
       probability: result.candidate?.probability ?? null,
+      gateMinProbability,
       llmCost: 0,
     });
     return { outcome: 'gate_skip', reason: 'GATE_SKIP' };
@@ -278,12 +290,18 @@ export async function processSignalJob(
 
   try {
     // 5 — validated context (fails fast, pre-LLM).
+    // BE-100 — operator-tunable debate depths (falls back to env when unset).
     const preparedOutcome = deps.assembler.prepare({
       result,
       instrument,
       timeframe,
       barTs,
-      configuredDebateRounds: deps.env.AGENT_DEBATE_ROUNDS as 0 | 1 | 2,
+      configuredDebateRounds: (effectiveSettings?.risk.debateRoundsLowEntropy ??
+        deps.env.AGENT_DEBATE_ROUNDS) as 0 | 1 | 2,
+      configuredDebateRoundsHighEntropy: (effectiveSettings?.risk.debateRoundsHighEntropy ?? 2) as
+        | 0
+        | 1
+        | 2,
     });
     if (!preparedOutcome.ok) {
       await deps.prisma.signal.update({ where: { id: signal.id }, data: { status: 'rejected' } });

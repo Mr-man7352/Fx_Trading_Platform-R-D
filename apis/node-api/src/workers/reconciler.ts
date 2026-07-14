@@ -123,6 +123,18 @@ async function syncFullClose(
     reason,
     source: 'reconciler',
   });
+
+  // BE-115 — trade-close event with reason code and P&L (Telegram when configured).
+  await deps.notificationsQueue.add(
+    'alert',
+    {
+      severity: 'info',
+      title: 'Trade closed',
+      body: `${trade.instrument} ${trade.side}: P&L ${realized.toFixed(2)} (${reason})`,
+      event: 'trade.closed',
+    },
+    { removeOnComplete: 100 },
+  );
 }
 
 /** Broker partially closed a trade (e.g. BE-051 +1R partial) — accumulate P&L.

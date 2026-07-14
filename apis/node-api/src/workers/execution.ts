@@ -239,6 +239,14 @@ async function handleFill(
       body: `${intent.instrument}: filled ${result.filledUnits}, remainder ${result.remainderUnits} (no auto-retry)`,
       event: 'trade.partial',
     });
+  } else {
+    // BE-115 — full-fill trade event (Telegram when configured).
+    await notify(deps, {
+      severity: 'info',
+      title: 'Order filled',
+      body: `${intent.instrument} ${intent.side} ${result.filledUnits} @ ${entryPrice} (SL ${Number(intent.stopLoss)}${intent.takeProfit ? `, TP ${Number(intent.takeProfit)}` : ''}) [${intent.tradingMode}]`,
+      event: 'trade.fill',
+    });
   }
 }
 

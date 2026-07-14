@@ -22,7 +22,7 @@ describe('BE-036 recovery codes', () => {
   });
 
   it('hashes and verifies a code, tolerant of formatting', async () => {
-    const [code] = generateRecoveryCodes();
+    const code = generateRecoveryCodes()[0] as string;
     const hash = await hashRecoveryCode(code);
     expect(await verifyRecoveryCode(hash, code.toLowerCase())).toBe(true);
     expect(await verifyRecoveryCode(hash, 'AAAAA-BBBBB')).toBe(false);

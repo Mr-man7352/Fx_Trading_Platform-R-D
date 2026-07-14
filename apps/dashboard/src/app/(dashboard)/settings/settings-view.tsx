@@ -1,6 +1,8 @@
 'use client';
 
+import type { LivePromotionCheck, RiskSettings } from '@fx/types';
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -10,33 +12,27 @@ import {
   Input,
   Label,
 } from '@fx/ui';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { ErrorState, LoadingRows } from '@/components/states';
+import {
+  useLivePromotion,
+  useLivePromotionRequest,
+  useSettings,
+  useSettingsMutation,
+} from '@/lib/hooks';
 
 /**
- * FE-100 — operator settings. The v2.2 risk knobs are range-validated
- * client-side; the authoritative contract + persistence are the BE-100 CRUD
- * seam (Step 5.3), and a live promotion additionally requires step-up 2FA + the
- * BE-101 promotion gate (enforced server-side). Effective values show next to
- * their defaults. (The dashboard deliberately keeps zod out of its own deps —
- * the shared schema lands in `@fx/types` with BE-100.)
+ * FE-100 — operator settings, now PERSISTED through BE-100 (Step 5.3): reads
+ * the effective document (version + updatedAt shown), PATCHes a validated
+ * partial, and the workers pick the new values up next cycle. Client-side
+ * range checks mirror the authoritative `@fx/types` RiskSettingsSchema — the
+ * server re-validates every write. Live promotion renders the real BE-101
+ * checklist; the request path demands step-up 2FA (403 → step-up modal).
  */
-interface RiskSettings {
-  clusterLookbackDays: number;
-  clusterThreshold: number;
-  clusterCadenceHours: number;
-  sessionMultLondon: number;
-  sessionMultNewYork: number;
-  sessionMultTokyo: number;
-  weekendGapFlatten: boolean;
-  perInstrumentDailyLossPct: number;
-  debateRoundsLowEntropy: 0 | 1 | 2;
-  debateRoundsHighEntropy: 0 | 1 | 2;
-  entryGatePreFilter: number;
-}
 
-/** [min, max] bounds mirroring the intended BE-100 contract. */
+/** [min, max] bounds mirroring RiskSettingsSchema (authoritative server-side). */
 const BOUNDS: Record<keyof RiskSettings, [number, number] | null> = {
   clusterLookbackDays: [5, 365],
   clusterThreshold: [0, 1],
@@ -51,24 +47,22 @@ const BOUNDS: Record<keyof RiskSettings, [number, number] | null> = {
   entryGatePreFilter: [0.5, 0.95],
 };
 
-const DEFAULTS: RiskSettings = {
-  clusterLookbackDays: 60,
-  clusterThreshold: 0.6,
-  clusterCadenceHours: 24,
-  sessionMultLondon: 1,
-  sessionMultNewYork: 1,
-  sessionMultTokyo: 0.8,
-  weekendGapFlatten: true,
-  perInstrumentDailyLossPct: 0.02,
-  debateRoundsLowEntropy: 0,
-  debateRoundsHighEntropy: 2,
-  entryGatePreFilter: 0.5,
-};
-
 export function SettingsView() {
-  const { register, handleSubmit } = useForm<RiskSettings>({ defaultValues: DEFAULTS });
+  const settings = useSettings();
+  const mutation = useSettingsMutation();
+  const { register, handleSubmit, reset } = useForm<RiskSettings>();
 
-  function onSubmit(raw: RiskSettings) {
+  // Populate the form from the server's effective document once loaded.
+  useEffect(() => {
+    if (settings.data) reset(settings.data.settings.risk);
+  }, [settings.data, reset]);
+
+  if (settings.isError) return <ErrorState error={settings.error} />;
+  if (settings.isLoading || !settings.data) return <LoadingRows rows={5} />;
+
+  const { version, updatedAt } = settings.data;
+
+  async function onSubmit(raw: RiskSettings) {
     const numeric: RiskSettings = {
       ...raw,
       clusterLookbackDays: Number(raw.clusterLookbackDays),
@@ -92,34 +86,36 @@ export function SettingsView() {
         return;
       }
     }
-    toast.success('Validated', {
-      description: 'Persistence lands with the BE-100 settings API (Step 5.3).',
-    });
+    try {
+      const res = await mutation.mutateAsync({ risk: numeric });
+      toast.success(`Settings saved (v${res.version})`, {
+        description: 'Workers pick the new values up on the next signal cycle.',
+      });
+    } catch (err) {
+      toast.error('Save failed', {
+        description: err instanceof Error ? err.message : 'Retry.',
+      });
+    }
   }
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Mode &amp; promotion</CardTitle>
-          <CardDescription>
-            Promoting to <span className="font-mono">live</span> requires step-up 2FA and passes the
-            BE-101 promotion gate (a <span className="font-mono">NOT VALIDATED</span> model is
-            blocked server-side).
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="destructive" disabled>
-            Promote to live (gated)
-          </Button>
-        </CardContent>
-      </Card>
+      <p className="text-xs text-muted-foreground">
+        Effective version <span className="font-mono">v{version}</span>
+        {updatedAt && <> · last changed {new Date(updatedAt).toLocaleString()}</>}
+        {version === 0 && <> · compiled defaults (no operator override yet)</>}
+      </p>
+
+      <LivePromotionCard />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Correlation clustering</CardTitle>
-            <CardDescription>Consumes QN-048 clusters; cap enforced by BE-071.</CardDescription>
+            <CardDescription>
+              Consumes QN-048 clusters; cap enforced by BE-071. Python reads these knobs on its next
+              scheduled pass.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <NumField
@@ -166,6 +162,10 @@ export function SettingsView() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Limits &amp; gating</CardTitle>
+            <CardDescription>
+              Entry-gate pre-filter, per-instrument tripwire, and debate depths take effect on the
+              NEXT signal cycle (BE-100 AC).
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <NumField
@@ -199,9 +199,79 @@ export function SettingsView() {
           </CardContent>
         </Card>
 
-        <Button type="submit">Save settings</Button>
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? 'Saving…' : 'Save settings'}
+        </Button>
       </form>
     </div>
+  );
+}
+
+/** BE-101 — the real promotion checklist; unmet conditions listed verbatim. */
+function LivePromotionCard() {
+  const checklist = useLivePromotion();
+  const request = useLivePromotionRequest();
+  const items: LivePromotionCheck[] = checklist.data?.checklist ?? [];
+  const allowed = checklist.data?.allowed ?? false;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">Mode &amp; promotion</CardTitle>
+        <CardDescription>
+          Promoting to <span className="font-mono">live</span> requires step-up 2FA and every BE-101
+          condition below. <span className="font-mono">TRADING_MODE</span> itself flips at deploy —
+          an approved request is recorded in the audit log.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {checklist.isLoading && <LoadingRows rows={3} />}
+        {checklist.isError && <ErrorState error={checklist.error} />}
+        {items.length > 0 && (
+          <ul className="space-y-1.5">
+            {items.map((c) => (
+              <li key={c.id} className="flex items-start gap-2 text-sm">
+                <Badge
+                  variant={c.ok ? 'secondary' : 'destructive'}
+                  className="mt-0.5 w-14 justify-center font-mono text-[10px]"
+                >
+                  {c.ok ? 'MET' : 'UNMET'}
+                </Badge>
+                <div>
+                  <p>{c.label}</p>
+                  {c.detail && <p className="text-xs text-muted-foreground">{c.detail}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button
+          variant="destructive"
+          disabled={request.isPending || checklist.isLoading}
+          onClick={async () => {
+            try {
+              const res = await request.mutateAsync();
+              if (res.allowed) {
+                toast.success('Live promotion approved', {
+                  description: 'Recorded in the audit log. Flip TRADING_MODE=live at deploy.',
+                });
+              } else {
+                toast.error('Live promotion blocked', {
+                  description: `${res.checklist.filter((c) => !c.ok).length} unmet condition(s) — see checklist.`,
+                });
+              }
+            } catch (err) {
+              // 403 STEP_UP_2FA_REQUIRED opens the step-up modal via the api client.
+              toast.error('Promotion request failed', {
+                description: err instanceof Error ? err.message : 'Retry.',
+              });
+            }
+          }}
+        >
+          {allowed ? 'Request live promotion' : 'Request live promotion (will be blocked)'}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

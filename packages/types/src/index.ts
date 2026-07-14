@@ -29,9 +29,15 @@ export * from './auth.js';
 // BE-090/QN-052 — backtest contracts (Node-internal, like agents.js).
 export * from './backtest.js';
 export * from './broker.js';
+// BE-110 — economic calendar contracts (Node-internal, like agents.js).
+export * from './calendar.js';
 // BE-072/073 — kill-switch API contracts (Node-internal, like agents.js).
 export * from './killswitch.js';
 export * from './market.js';
+// QN-055 via the Node proxy — quant analytics read contracts (Node-internal).
+export * from './quant.js';
+// BE-100/101 — settings + live-promotion contracts (Node-internal, like agents.js).
+export * from './settings.js';
 export * from './trading.js';
 export * from './ws.js';
 

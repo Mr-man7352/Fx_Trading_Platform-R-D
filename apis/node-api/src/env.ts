@@ -170,9 +170,42 @@ const EnvSchema = z.object({
   TRADE_MANAGER_PARTIAL_FRACTION: z.coerce.number().gt(0).lte(1).default(0.5),
   TRADE_MANAGER_BREAKEVEN_BUFFER_R: z.coerce.number().nonnegative().default(0.05),
   TRADE_MANAGER_TRAIL_DISTANCE_R: z.coerce.number().positive().default(0.5),
-  /** BE-050 — optional Telegram alerts (no-op when unset). */
+  /** BE-050/BE-115 — optional Telegram alerts (no-op when unset). */
   TELEGRAM_BOT_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
   TELEGRAM_CHAT_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  /**
+   * BE-118 — Twilio SMS escalation for CRITICAL-severity events only
+   * (kill-switch, reconciliation mismatch, circuit open, dead-man, DD halt).
+   * All optional — any key missing ⇒ SMS path is inert (mock-first, like
+   * Telegram); a send failure is logged AND surfaced on the dashboard
+   * (`notifications` WS channel — alerting-about-alerting).
+   */
+  TWILIO_ACCOUNT_SID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  TWILIO_AUTH_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  TWILIO_FROM_NUMBER: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  /** BE-118 — operator phone in E.164 (e.g. +447700900000). */
+  ALERT_SMS_TO: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  /**
+   * BE-116 — daily/weekly digest recipient. Unset ⇒ digests are logged, not
+   * sent (mock-first; Resend is used when RESEND_API_KEY is also set).
+   */
+  DIGEST_EMAIL_TO: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+  /**
+   * BE-110 — economic calendar vendor. `forexfactory` = the keyless free
+   * weekly JSON feed; `none` preserves the Phase-3/4 behaviour (blackout rule
+   * records `calendar_unavailable` and passes — fail-open, never fabricated).
+   */
+  CALENDAR_PROVIDER: z.enum(['forexfactory', 'none']).default('forexfactory'),
+  /** BE-110 — vendor refresh cadence (market-data worker repeatable job). */
+  CALENDAR_REFRESH_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
+  /** BE-110 — data older than this ⇒ provider reports unavailable (fail-open). */
+  CALENDAR_STALE_AFTER_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(48 * 3_600_000),
+  /** BE-100 — worker-side cache TTL for effective settings reads. */
+  SETTINGS_CACHE_TTL_MS: z.coerce.number().int().positive().default(15_000),
   /** BE-080 — supervision scan cadence (layers + gate; LLM only on material change). */
   SUPERVISION_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   /** BE-081 — time-stop layer: max holding hours before deterministic close. */

@@ -3,8 +3,11 @@
 import type {
   AuditLogQuery,
   BacktestConfig,
+  BrokerCredentialsWrite,
+  CalendarQuery,
   KillSwitchRequest,
   MarketCandlesQuery,
+  SettingsPatch,
   SignalsQuery,
 } from '@fx/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -95,10 +98,90 @@ export function useAudit(query: Partial<AuditLogQuery> = {}) {
   });
 }
 
-// ── Trades (FE-070 — BE-054 seam) ────────────────────────────────────────────
+// ── Trades (FE-070 — BE-054) ─────────────────────────────────────────────────
 export function useTrades() {
   return useQuery({
     queryKey: ['trades'],
     queryFn: () => api.trades.list(),
+  });
+}
+
+// ── Settings (FE-100 — BE-100/101, Step 5.3) ─────────────────────────────────
+export function useSettings() {
+  return useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.settings.get(),
+  });
+}
+
+export function useSettingsMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: SettingsPatch) => api.settings.patch(patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['settings'] }),
+  });
+}
+
+export function useBrokerCredentialsMutation() {
+  return useMutation({
+    mutationFn: (body: BrokerCredentialsWrite) => api.settings.putBrokerCredentials(body),
+  });
+}
+
+export function useLivePromotion() {
+  return useQuery({
+    queryKey: ['live-promotion'],
+    queryFn: () => api.livePromotion.get(),
+  });
+}
+
+export function useLivePromotionRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.livePromotion.post(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['live-promotion'] }),
+  });
+}
+
+// ── Economic calendar (FE-101 — BE-110, Step 5.3) ────────────────────────────
+export function useCalendar(query: Partial<CalendarQuery> = {}) {
+  return useQuery({
+    queryKey: ['calendar', query],
+    queryFn: () => api.calendar.list(query),
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+// ── Quant analytics (FE-090 — QN-055 via the Node proxy) ─────────────────────
+export function useQuantModels() {
+  return useQuery({
+    queryKey: ['quant-models'],
+    queryFn: () => api.quant.models(),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useQuantCalibration(
+  model: { instrument: string; timeframe: string; version: number } | null,
+) {
+  return useQuery({
+    queryKey: ['quant-calibration', model],
+    queryFn: () =>
+      api.quant.calibration(
+        (model as NonNullable<typeof model>).instrument,
+        (model as NonNullable<typeof model>).timeframe,
+        (model as NonNullable<typeof model>).version,
+      ),
+    enabled: model !== null,
+    retry: false,
+  });
+}
+
+export function useQuantRegime(instrument: string | null, timeframe = 'H1') {
+  return useQuery({
+    queryKey: ['quant-regime', instrument, timeframe],
+    queryFn: () => api.quant.regime(instrument as string, { timeframe }),
+    enabled: instrument !== null,
+    retry: false,
   });
 }

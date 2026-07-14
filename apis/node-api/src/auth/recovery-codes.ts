@@ -15,7 +15,7 @@ const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function randomCode(): string {
   const bytes = randomBytes(10);
   let out = '';
-  for (let i = 0; i < 10; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
+  for (let i = 0; i < 10; i++) out += ALPHABET[(bytes[i] ?? 0) % ALPHABET.length];
   // Grouped for readability: XXXXX-XXXXX
   return `${out.slice(0, 5)}-${out.slice(5)}`;
 }

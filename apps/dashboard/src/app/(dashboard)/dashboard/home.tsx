@@ -1,41 +1,21 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, PnLTile } from '@fx/ui';
-import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useCallback } from 'react';
-import { toast } from 'sonner';
 import { useSignals } from '@/lib/hooks';
-import { useWs } from '@/lib/use-ws';
+import { useConnection } from '@/stores/connection';
 
 /**
  * FE-040 — operator home. Equity / daily-P&L / open-positions tiles are fed by
  * the broker-equity seam (ACCOUNT_BASELINE_EQUITY + realized P&L; no JSON read
  * endpoint on this instance yet) so they render `stale` with a caption rather
- * than a fabricated number. The recent-signals tile and the live WS bridge are
- * real (BE-067/BE-014).
+ * than a fabricated number. The recent-signals tile is real (BE-067). Realtime
+ * (invalidations + toasts) is owned by the layout-level RealtimeProvider
+ * (FE-120) — this page only READS connection state for its stale indicator.
  */
 export function Home() {
   const signals = useSignals({ limit: 10 });
-  const qc = useQueryClient();
-
-  const onEvent = useCallback(
-    (channel: string, payload: unknown) => {
-      if (channel === 'signals') {
-        qc.invalidateQueries({ queryKey: ['signals'] });
-      }
-      if (channel.startsWith('risk')) {
-        qc.invalidateQueries({ queryKey: ['kill-switch'] });
-        const p = payload as { reason?: string } | undefined;
-        if (channel.includes('halt')) {
-          toast.error('Risk halt', { description: p?.reason ?? 'Trading paused.' });
-        }
-      }
-    },
-    [qc],
-  );
-
-  const status = useWs({ channels: ['signals', 'risk.halt', 'risk.resume'], onEvent });
+  const status = useConnection((s) => s.status);
   const recent = signals.data?.signals ?? [];
   const last = recent[0];
 

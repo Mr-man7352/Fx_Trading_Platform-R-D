@@ -59,7 +59,17 @@ export function TradesView() {
           Export CSV
         </Button>
       </div>
-      <Card>
+
+      {/* FE-130 — mobile (<sm): stacked cards, SL/TP + unrealized P&L visible
+          without horizontal scroll (values arrive with the richer BE-054
+          record; rendered as honest seams until then, never fabricated). */}
+      <div className="space-y-2 sm:hidden">
+        {rows.map((t) => (
+          <MobileTradeCard key={t.id} trade={t} />
+        ))}
+      </div>
+
+      <Card className="hidden sm:block">
         <CardContent className="p-0">
           <table className="w-full text-sm">
             <thead className="border-b text-left text-xs uppercase text-muted-foreground">
@@ -89,6 +99,47 @@ export function TradesView() {
   );
 }
 
+/** FE-130 — one position per card: side/units/SL/TP/uP&L in a 2-col grid. */
+function MobileTradeCard({ trade: t }: { trade: Trade }) {
+  const isOpen = t.closedAt === null;
+  return (
+    <Card>
+      <CardContent className="space-y-2 p-3">
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-sm font-semibold">{t.instrument}</span>
+          <Badge variant={isOpen ? 'default' : 'secondary'}>{isOpen ? 'open' : 'closed'}</Badge>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">Side</dt>
+            <dd className="uppercase">{t.side}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">Units</dt>
+            <dd className="tabular-nums">{t.units.toLocaleString()}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">SL / TP</dt>
+            <dd className="font-mono" title="Arrives with the richer BE-054 trade record">
+              — / —
+            </dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">Unrealized P&L</dt>
+            <dd className="font-mono" title="Arrives with the richer BE-054 trade record">
+              —
+            </dd>
+          </div>
+          <div className="col-span-2 flex justify-between">
+            <dt className="text-muted-foreground">Opened</dt>
+            <dd className="tabular-nums">{new Date(t.openedAt).toLocaleString()}</dd>
+          </div>
+        </dl>
+      </CardContent>
+    </Card>
+  );
+}
+
 function TradeRow({
   trade: t,
   open,
@@ -108,7 +159,21 @@ function TradeRow({
         )}
         onClick={onToggle}
       >
-        <td className="p-3 font-mono">{t.instrument}</td>
+        <td className="p-3 font-mono">
+          {/* FE-131 — keyboard-reachable expander (the row onClick is pointer sugar). */}
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-label={`${t.instrument} ${t.side} — toggle provenance details`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+            className="font-mono underline-offset-2 hover:underline"
+          >
+            {t.instrument}
+          </button>
+        </td>
         <td className="p-3 uppercase">{t.side}</td>
         <td className="p-3 text-right tabular-nums">{t.units.toLocaleString()}</td>
         <td className="p-3">{t.mode}</td>

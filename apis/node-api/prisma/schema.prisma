@@ -533,6 +533,44 @@ model KillSwitchState {
   @@map("kill_switch_state")
 }
 
+// ─── Step 5.3 Settings & calendar (BE-100/BE-110) ────────────────────────────
+
+/// BE-100 — operator settings, append-only versions; the LATEST row is the
+/// effective document. `settings` stores the PlatformSettings JSON (validated
+/// in the API layer against @fx/types SettingsPatchSchema before merge);
+/// history is retained for audit — never UPDATE, always INSERT.
+model PlatformSettings {
+  version     Int      @id @default(autoincrement())
+  settings    Json
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("platform_settings")
+}
+
+/// BE-110 — vendor-refreshed economic calendar events. Consumers: the
+/// risk-gate econ-blackout rule (±30 min high-impact, per currency), the
+/// supervision pre_news_flatten layer, and FE-101. The vendor feed has no
+/// stable ids, so the natural key is (source, ts, currency, title); refresh
+/// upserts on it (actual/forecast revisions overwrite in place).
+model EconomicCalendarEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  ts        DateTime @db.Timestamptz(6)
+  currency  String
+  impact    String
+  title     String
+  source    String   @default("forexfactory")
+  forecast  String?
+  previous  String?
+  actual    String?
+  raw       Json?
+  fetchedAt DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@unique([source, ts, currency, title])
+  @@index([ts])
+  @@map("calendar_events")
+}
+
 // ─── §7.3 Auth & compliance ──────────────────────────────────────────────────
 
 enum UserRole {

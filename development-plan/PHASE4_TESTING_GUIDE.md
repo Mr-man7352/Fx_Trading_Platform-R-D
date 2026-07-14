@@ -4,7 +4,7 @@ Companion to [`PHASE3_TESTING_GUIDE.md`](PHASE3_TESTING_GUIDE.md) (same
 philosophy: everything below was source-reviewed and unit-tested in the
 sandbox, but the runtime proofs need your machine — real Python 3.13, a
 `pnpm install`ed workspace, Postgres/Redis, and a promoted champion model).
-Phase-4 build record lives in [`DEVLOG_current.md`](DEVLOG_current.md); plan in
+Phase-4 build record lives in [`DEVLOG_phase5.md`](DEVLOG_phase5.md); plan in
 [`FX_PRD.md`](FX_PRD.md) §8.
 
 **Phase 4 exit criteria (PRD):** a backtest replays deterministically; the

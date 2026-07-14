@@ -2,6 +2,7 @@ import type { DataQualityFlag } from '@fx/types';
 import { type ConnectionOptions, type Job, Queue, type Telemetry, Worker } from 'bullmq';
 import { BullMQOtel } from 'bullmq-otel';
 import { Redis } from 'ioredis';
+import { buildCalendarVendor, refreshCalendar } from '../calendar/calendar-service.js';
 import { createPrismaClient, type PrismaClient } from '../db.js';
 import type { Env } from '../env.js';
 import { DataQualityMonitor, type DataQualitySink } from '../market/data-quality.js';
@@ -70,10 +71,30 @@ export function startMarketDataWorker(env: Env): MarketDataWorkerHandle {
   const staleTimer = setInterval(() => processor.checkStale(new Date()), 10_000);
   staleTimer.unref();
 
+  // BE-110 — economic-calendar refresh (vendor-gated; CALENDAR_PROVIDER=none
+  // keeps the seam inert). Fail-open: a failed refresh only logs — staleness
+  // (CALENDAR_STALE_AFTER_MS) flips consumers to `calendar_unavailable`.
+  const calendarVendor = buildCalendarVendor(env);
+  let calendarTimer: NodeJS.Timeout | undefined;
+  if (calendarVendor) {
+    const runRefresh = async () => {
+      try {
+        const { written } = await refreshCalendar(prisma, calendarVendor);
+        console.log(`[calendar] refreshed ${written} events from ${calendarVendor.name}`);
+      } catch (err) {
+        console.warn('[calendar] refresh failed (fail-open — consumers go unavailable):', err);
+      }
+    };
+    void runRefresh(); // once on boot
+    calendarTimer = setInterval(runRefresh, env.CALENDAR_REFRESH_INTERVAL_MS);
+    calendarTimer.unref();
+  }
+
   return {
     worker,
     async close() {
       clearInterval(staleTimer);
+      if (calendarTimer) clearInterval(calendarTimer);
       await worker.close();
       await signals.close();
       connection.disconnect();

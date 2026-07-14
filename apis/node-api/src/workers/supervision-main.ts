@@ -13,6 +13,7 @@ import { LlmClient } from '@fx/llm';
 import { type ConnectionOptions, Queue, type Telemetry, Worker } from 'bullmq';
 import { BullMQOtel } from 'bullmq-otel';
 import { Redis } from 'ioredis';
+import { startCalendarProvider } from '../calendar/calendar-service.js';
 import { createPrismaClient } from '../db.js';
 import { loadEnv } from '../env.js';
 import { type KillSwitchDb, KillSwitchStore } from '../execution/kill-switch.js';
@@ -54,6 +55,10 @@ killSwitch.hydrate().catch((err) => {
   console.warn('[supervision] kill-switch boot hydration failed (retries on cache miss):', err);
 });
 
+// BE-110 — DB-backed calendar provider: pre_news_flatten + the news-blackout
+// material-change signal finally see real events (fail-open when stale).
+const calendar = startCalendarProvider(prisma, env);
+
 const deps: SupervisionDeps = {
   prisma,
   redis: connection,
@@ -61,6 +66,7 @@ const deps: SupervisionDeps = {
   llm,
   registry: createPromptRegistry(),
   killSwitch,
+  calendar: calendar.provider,
   env,
 };
 
@@ -110,6 +116,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    calendar.stop();
     Promise.all([worker.close(), supervisionQueue.close()])
       .then(async () => {
         connection.disconnect();

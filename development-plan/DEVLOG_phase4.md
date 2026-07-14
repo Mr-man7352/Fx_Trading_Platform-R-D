@@ -2,7 +2,7 @@
 
 > **ARCHIVE (Phase 4 code-complete 2026-07-12 — NOT yet runtime-tested).** This
 > file is now the frozen Phase-4 record; live development continues in
-> [`DEVLOG_current.md`](DEVLOG_current.md) (Phase 5 — Surface). The Standing
+> [`DEVLOG_phase5.md`](DEVLOG_phase5.md) (Phase 5 — Surface). The Standing
 > decisions + Conventions below are carried forward into the Phase-5 log as the
 > single live source of truth. **Phase-4's runtime proofs and pending human
 > actions are still OUTSTANDING** — the code shipped and was source-audited, but

@@ -13,7 +13,7 @@ const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no ambiguous 0/O/1/I
 function block(len: number): string {
   const bytes = randomBytes(len);
   let out = '';
-  for (let i = 0; i < len; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
+  for (let i = 0; i < len; i++) out += ALPHABET[(bytes[i] ?? 0) % ALPHABET.length];
   return out;
 }
 

@@ -19,6 +19,11 @@ export interface AppShellProps extends ComponentProps<'div'> {
   sidebar?: ReactNode;
   /** Mobile sticky footer — kill switch must be reachable here in one tap (FE-130). */
   mobileFooter?: ReactNode;
+  /**
+   * FE-131 — render a "Skip to content" link as the first tabbable element
+   * (WCAG 2.4.1 bypass blocks). Targets the main region (#main-content).
+   */
+  skipLink?: boolean;
 }
 
 export function AppShell({
@@ -27,6 +32,7 @@ export function AppShell({
   banner,
   sidebar,
   mobileFooter,
+  skipLink = false,
   className,
   children,
   ...props
@@ -36,6 +42,14 @@ export function AppShell({
       className={cn('flex min-h-dvh flex-col bg-background text-foreground', className)}
       {...props}
     >
+      {skipLink && (
+        <a
+          href="#main-content"
+          className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+        >
+          Skip to content
+        </a>
+      )}
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div className="flex h-14 items-center justify-between gap-4 px-4">
           <div className="flex min-w-0 items-center gap-3">{brand}</div>
@@ -51,7 +65,11 @@ export function AppShell({
             </nav>
           </aside>
         )}
-        <main className={cn('min-w-0 flex-1 p-4 md:p-6', mobileFooter && 'pb-20 md:pb-6')}>
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className={cn('min-w-0 flex-1 p-4 outline-none md:p-6', mobileFooter && 'pb-20 md:pb-6')}
+        >
           {children}
         </main>
       </div>

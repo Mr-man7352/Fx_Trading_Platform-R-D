@@ -115,11 +115,16 @@ export function partitionFeatures(features: Record<string, number>): PreparedCon
 
 /**
  * §9.6 debate-depth rule: high HMM entropy (≥ 2/3 — same threshold as quant
- * `regime.debate_rounds()`) forces 2 rounds regardless of static config;
- * otherwise the configured value wins (BE-062 AC).
+ * `regime.debate_rounds()`) forces the HIGH-entropy depth (default 2 — the
+ * original hardwired value); otherwise the configured value wins (BE-062 AC).
+ * BE-100 makes both bands operator-tunable (FE-100 debate-regime mapping).
  */
-export function effectiveDebateRounds(configured: 0 | 1 | 2, regimeEntropy: number): 0 | 1 | 2 {
-  return regimeEntropy >= 2 / 3 ? 2 : configured;
+export function effectiveDebateRounds(
+  configured: 0 | 1 | 2,
+  regimeEntropy: number,
+  highEntropyRounds: 0 | 1 | 2 = 2,
+): 0 | 1 | 2 {
+  return regimeEntropy >= 2 / 3 ? highEntropyRounds : configured;
 }
 
 /**
@@ -228,6 +233,8 @@ export class ContextAssembler {
     timeframe: Timeframe;
     barTs: Date;
     configuredDebateRounds: 0 | 1 | 2;
+    /** BE-100 — high-entropy debate depth (defaults to the §9.6 hardwired 2). */
+    configuredDebateRoundsHighEntropy?: 0 | 1 | 2;
   }): { ok: true; prepared: PreparedContext } | { ok: false; reason: HoldReason; detail: string } {
     const { result } = params;
     if (!result.hasCandidate || result.candidate === null) {
@@ -241,7 +248,11 @@ export class ContextAssembler {
       liquidityRegime: result.liquidityRegime,
       trendRegime: result.trendRegime,
       regimeEntropy: result.regimeEntropy,
-      debateRounds: effectiveDebateRounds(params.configuredDebateRounds, result.regimeEntropy),
+      debateRounds: effectiveDebateRounds(
+        params.configuredDebateRounds,
+        result.regimeEntropy,
+        params.configuredDebateRoundsHighEntropy ?? 2,
+      ),
       featureSetVersion: result.featureSetVersion,
     } satisfies Record<keyof PipelineContext, unknown>);
     if (!pipelineParse.success) {

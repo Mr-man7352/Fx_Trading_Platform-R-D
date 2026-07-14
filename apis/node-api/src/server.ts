@@ -47,10 +47,11 @@ const authService = new AuthService({
   env,
   log: { info: (o, m) => console.log(m ?? '', o), error: (o, m) => console.error(m ?? '', o) },
 });
+const killSwitchStore = new KillSwitchStore(prisma as unknown as KillSwitchDb, cmdRedis);
 const app = await buildApp(env, {
   prisma,
   killSwitch: {
-    store: new KillSwitchStore(prisma as unknown as KillSwitchDb, cmdRedis),
+    store: killSwitchStore,
     quant: new QuantExecutionClient(env),
     redis: cmdRedis,
     notify: async (severity, title, body) => {
@@ -65,6 +66,9 @@ const app = await buildApp(env, {
     },
   },
   backtests: { queue: backtestsQueue },
+  // BE-100/101 — settings routes: WS fan-out + kill-switch state for the
+  // live-promotion checklist.
+  settings: { redis: cmdRedis, killSwitch: killSwitchStore },
 });
 
 const wsRedis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });

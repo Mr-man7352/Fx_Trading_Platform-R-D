@@ -10,6 +10,7 @@ import type { AccountState, QuantCandidate } from '@fx/types';
 import type { PrismaClient } from '../db.js';
 import type { Env } from '../env.js';
 import type { KillSwitchStore } from '../execution/kill-switch.js';
+import type { SettingsReader } from '../settings/settings-service.js';
 
 /**
  * BE-066/070 — the risk-gate seam the signals worker calls between the PM's
@@ -93,19 +94,37 @@ export function riskGateConfigFromEnv(env: Env): RiskGateConfig {
  * gate NEVER approves on missing mandatory inputs.
  */
 export class DeterministicRiskGate implements RiskGate {
-  private readonly config: RiskGateConfig;
+  private readonly baseConfig: RiskGateConfig;
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly killSwitch: KillSwitchStore,
     env: Env,
     private readonly calendar: CalendarProvider = NO_CALENDAR,
+    /** BE-100 — operator settings overlay ("next cycle uses new values"). */
+    private readonly settings: SettingsReader | null = null,
   ) {
-    this.config = riskGateConfigFromEnv(env);
+    this.baseConfig = riskGateConfigFromEnv(env);
+  }
+
+  /** Env config with the BE-100 settings overlay (fail-open to env values). */
+  private async effectiveConfig(): Promise<RiskGateConfig> {
+    if (!this.settings) return this.baseConfig;
+    try {
+      const s = await this.settings.effective();
+      return {
+        ...this.baseConfig,
+        instrumentDailyLossPct: s.risk.perInstrumentDailyLossPct,
+        weekendFlattenEnabled: s.risk.weekendGapFlatten,
+      };
+    } catch {
+      return this.baseConfig; // a settings read failure never blocks the gate
+    }
   }
 
   async evaluate(input: RiskGateInput): Promise<RiskGateVerdict> {
     const { candidate, account, barTs } = input;
+    const config = await this.effectiveConfig();
 
     const [killSwitchActive, clusterSet, openTrades, weeklyClosed, instrumentToday, events] =
       await Promise.all([
@@ -127,7 +146,7 @@ export class DeterministicRiskGate implements RiskGate {
             closedAt: { gte: startOfUtcDay() },
           },
         }),
-        this.calendar.eventsAround(barTs, this.config.blackoutMinutes),
+        this.calendar.eventsAround(barTs, config.blackoutMinutes),
       ]);
 
     const equity = account.equity > 0 ? account.equity : 1;
@@ -157,7 +176,7 @@ export class DeterministicRiskGate implements RiskGate {
             ? null
             : input.features.weekend_gap_window === 1,
       },
-      this.config,
+      config,
     );
 
     return {
